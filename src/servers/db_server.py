@@ -5,6 +5,7 @@ import aiosqlite, re
 from fastmcp import FastMCP, Context
 from mcp.types import CreateMessageRequestParams, SamplingMessage
 import mcp.types as types
+import os
 
 DB_PATH = "database.db"
 
@@ -174,8 +175,9 @@ async def db_schema() -> str:
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8001))
     mcp.run(
         transport="sse",
         host="0.0.0.0",
-        port=8001,
+        port=port,
     )
