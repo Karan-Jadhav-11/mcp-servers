@@ -2,7 +2,13 @@ import subprocess
 import tempfile
 import os
 import shutil
+import threading
+import time
+import urllib.request
+import logging
 from fastmcp import FastMCP
+
+logger = logging.getLogger("manim_server")
 
 mcp = FastMCP("manim-server")
 
@@ -58,9 +64,22 @@ def cleanup_manim_temp_dir(directory: str) -> str:
     except Exception as e:
         return f"Failed to clean up directory: {directory}. Error: {str(e)}"
 
+def _keep_alive(port: int):
+    """Background task to ping the health endpoint every 10 minutes."""
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/health", timeout=5)
+            logger.info("Keep-alive ping successful")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8002))
+    
+    # Start keep-alive daemon thread
+    threading.Thread(target=_keep_alive, args=(port,), daemon=True).start()
+    
     mcp.run(
         transport="sse",
         host="0.0.0.0",

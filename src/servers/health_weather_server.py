@@ -3,6 +3,8 @@ from openapi_pydantic.v3.v3_0 import response
 from fastmcp import FastMCP
 import asyncio, httpx, os
 import logging, json, time
+import threading
+import urllib.request
 from datetime import datetime, UTC
 from dotenv import load_dotenv
 
@@ -161,10 +163,24 @@ def health_tips() -> str:
     return HEALTH_TIPS
 
 
+def _keep_alive(port: int):
+    """Background task to ping the health endpoint every 10 minutes."""
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/health", timeout=5)
+            logger.info("Keep-alive ping successful")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
+
 # ── Step 6: Server Run ──────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+    
+    # Start keep-alive daemon thread
+    threading.Thread(target=_keep_alive, args=(port,), daemon=True).start()
+    
     mcp.run(
         transport="sse",
         host="0.0.0.0",

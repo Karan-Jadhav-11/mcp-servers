@@ -28,7 +28,10 @@ EXPOSE 8000 8001 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+# Default server if not specified
+ENV MCP_SERVER=health_weather_server
+ENV DB_PATH=/app/database.db
+
 # Start with uv run — uses the .venv created by uv sync above
-# By default, we'll start the weather server. 
-# You can override this command in docker-compose.yml for the other servers!
-CMD ["uv", "run", "python", "src/servers/health_weather_server.py"]
+# We use shell form so $MCP_SERVER expands correctly
+CMD ["sh", "-c", "uv run python src/servers/${MCP_SERVER}.py"]

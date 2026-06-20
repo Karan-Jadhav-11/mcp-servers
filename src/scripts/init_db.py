@@ -13,11 +13,12 @@ each time, so you always get a clean, known dataset.
 """
  
 import sqlite3
+import os
+
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "database.db"))
  
-DB_PATH = "database.db"   # must match DB_PATH in db_server.py
  
- 
-def main():
+def seed_database():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
  
@@ -126,4 +127,4 @@ def main():
  
  
 if __name__ == "__main__":
-    main()
+    seed_database()

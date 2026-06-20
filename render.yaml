@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: mcp-health-weather
+    runtime: docker
+    envVars:
+      - key: MCP_SERVER
+        value: health_weather_server
+      - key: OPENWEATHER_API_KEY
+        value: "YOUR_API_KEY_HERE"
+
+  - type: web
+    name: mcp-database
+    runtime: docker
+    envVars:
+      - key: MCP_SERVER
+        value: db_server
+      - key: DB_PATH
+        value: /app/database.db
+
+  - type: web
+    name: mcp-manim
+    runtime: docker
+    envVars:
+      - key: MCP_SERVER
+        value: manim_server

@@ -1,13 +1,21 @@
-from griffe._internal.agents import inspector
 import aiosqlite
-from httpx import AsyncClient
-import aiosqlite, re
+import re
 from fastmcp import FastMCP, Context
 from mcp.types import CreateMessageRequestParams, SamplingMessage
 import mcp.types as types
 import os
+import sys
+import threading
+import time
+import urllib.request
+import logging
 
-DB_PATH = "database.db"
+# Ensure we can import from src.scripts
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from src.scripts.init_db import seed_database  # type: ignore
+
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "database.db"))
+logger = logging.getLogger("db_server")
 
 mcp = FastMCP("sqlite-db-server")
 
@@ -173,9 +181,27 @@ async def db_schema() -> str:
             schemas = [r[0] async for r in cur if r[0]]
     return "-- DATABASE SCHEMA\n" + "\n".join(schemas)
 
+def _keep_alive(port: int):
+    """Background task to ping the health endpoint every 10 minutes."""
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(f"http://localhost:{port}/health", timeout=5)
+            logger.info("Keep-alive ping successful")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))
+    
+    # Auto-seed database if it doesn't exist or is empty
+    if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
+        logger.info(f"Database {DB_PATH} not found or empty, running auto-seed...")
+        seed_database()
+    
+    # Start keep-alive daemon thread
+    threading.Thread(target=_keep_alive, args=(port,), daemon=True).start()
+    
     mcp.run(
         transport="sse",
         host="0.0.0.0",
