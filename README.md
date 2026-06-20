@@ -68,37 +68,53 @@ uv run python src/servers/manim_server.py           # Runs on port 8002
 
 ## Docker Support
 
-This project includes a `Dockerfile` that packages all servers. By default, it runs the `health_weather_server.py`. 
+This project includes a single `Dockerfile` that packages all three servers. You can specify which server to run by setting the `MCP_SERVER` environment variable:
+- `health_weather_server` (default)
+- `db_server`
+- `manim_server`
 
 To build and run via Docker:
 ```bash
 docker build -t mcp-health-server .
-docker run -p 8000:8000 --env-file .env mcp-health-server
+docker run -p 8000:8000 --env-file .env -e MCP_SERVER=health_weather_server mcp-health-server
 ```
 
-*(You can easily set up a `docker-compose.yml` to run all three servers simultaneously on their respective ports).*
+### Deploying to Render
+This repository includes a `render.yaml` Blueprint file. To deploy all three servers:
+1. Connect this repository to Render via the **Blueprints** dashboard.
+2. Render will automatically provision three separate Web Services.
+3. Don't forget to manually add your `OPENWEATHER_API_KEY` to the `mcp-health-weather` service in the Render dashboard!
 
 ## Claude Desktop Configuration
 
-If you are using Claude Desktop, you can configure it to launch these servers automatically. Add the following to your `claude_desktop_config.json`:
+If you've deployed these servers to Render (or another remote host), you can connect Claude Desktop to them using the `mcp-remote` npx package. 
+
+Add the following to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
-    "health-weather": {
-      "command": "C:\\path\\to\\uv.exe",
-      "args": ["run", "python", "src/servers/health_weather_server.py"],
-      "cwd": "C:\\path\\to\\mcp-health-server",
-      "env": {
-        "OPENWEATHER_API_KEY": "your_api_key"
-      }
+    "remote-health-weather": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://YOUR-APP-URL.onrender.com/sse",
+        "--transport",
+        "sse-only"
+      ]
     },
-    "my-database": {
-      "command": "C:\\path\\to\\uv.exe",
-      "args": ["run", "python", "src/servers/db_server.py"],
-      "cwd": "C:\\path\\to\\mcp-health-server"
+    "remote-database": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://YOUR-DB-URL.onrender.com/sse",
+        "--transport",
+        "sse-only"
+      ]
     }
   }
 }
 ```
-*(Note: Since these scripts are hardcoded to use SSE transport, you may need to switch them to `stdio` in the python scripts if you want Claude Desktop to run them via `command` properly).*
+*(Note: Because these FastMCP servers use SSE transport, you MUST specify `--transport sse-only` when using mcp-remote).*
