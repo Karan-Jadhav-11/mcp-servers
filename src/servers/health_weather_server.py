@@ -7,10 +7,18 @@ import threading
 import urllib.request
 from datetime import datetime, UTC
 from dotenv import load_dotenv
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+# pyrefly: ignore [missing-import]
+from src.security import create_auth_provider, create_security_middleware, InputSanitizer, OutputSanitizer
 
 load_dotenv()
 
-mcp = FastMCP("health-weather-server")
+mcp = FastMCP("health-weather-server", auth=create_auth_provider())
+
+# ── Security middleware stack ────────────────────────────────
+for middleware in create_security_middleware():
+    mcp.add_middleware(middleware)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,9 +79,18 @@ async def _fetch_weather(city : str, units : str = "metric" ) -> str:
         return " ❌ OPENWEATHER_API_KEY env var not set. Add it to your .env file."
 
     # validate city
+    try:
+        city = InputSanitizer.sanitize_string(
+            city, name="city", max_length=100,
+            allow_pattern=r"[a-zA-Z\s\-'.,]+"
+        )
+    except ValueError as e:
+        return f"❌ {e}"
 
-    if not city.strip().title():
-        return " ❌ City name cannot be empty. Please provide a valid city."
+    try:
+        units = InputSanitizer.sanitize_enum(units, {"metric", "imperial"}, name="units")
+    except ValueError as e:
+        return f"❌ {e}"
 
     # ── Step 3: Make the API call with retry ─────────────────────
 
@@ -110,13 +127,14 @@ async def _fetch_weather(city : str, units : str = "metric" ) -> str:
 # ── Step 5: Format and return — plain string, no TextContent wrapper
     unit_symbol = "°C" if units == "metric" else "°F"
 
-    return f"""🌤️  Live Weather — {data['name']}, {data['sys']['country']}
+    weather_text = f"""🌤️  Live Weather — {data['name']}, {data['sys']['country']}
    Temperature  : {data['main']['temp']}{unit_symbol}
    Feels Like   : {data['main']['feels_like']}{unit_symbol}
    Condition    : {data['weather'][0]['description'].title()}
    Humidity     : {data['main']['humidity']}%
    Wind Speed   : {data['wind']['speed']} m/s
    Visibility   : {data.get('visibility', 'N/A')} m"""
+    return OutputSanitizer.sanitize_tool_output(weather_text, source="OpenWeatherMap API")
 
 # ════════════════════════════════════════════════════
 # HEALTH TOOLS AND RESOURCES
@@ -129,8 +147,11 @@ def calculate_bmi(weight_kg: float, height_cm: float) -> str:
     Returns BMI value, category (Underweight/Normal/Overweight/Obese),
     and basic health advice. Use when user mentions weight and height.
     """
-    if weight_kg <= 0 or height_cm <= 0:
-        return "❌ Weight and height must be positive numbers."
+    try:
+        weight_kg = InputSanitizer.sanitize_number(weight_kg, 1, 500, name="weight_kg")
+        height_cm = InputSanitizer.sanitize_number(height_cm, 30, 300, name="height_cm")
+    except ValueError as e:
+        return f"❌ {e}"
 
     bmi = round(weight_kg / (height_cm / 100) ** 2, 1)
 

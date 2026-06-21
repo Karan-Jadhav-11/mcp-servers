@@ -7,21 +7,64 @@ import time
 import urllib.request
 import logging
 from fastmcp import FastMCP
+import sys
+import re as regex_module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+# pyrefly: ignore [missing-import]
+from src.security import create_auth_provider, create_security_middleware, InputSanitizer
 
 logger = logging.getLogger("manim_server")
 
-mcp = FastMCP("manim-server")
+mcp = FastMCP("manim-server", auth=create_auth_provider())
+
+# ── Security middleware stack ────────────────────────────────
+for middleware in create_security_middleware():
+    mcp.add_middleware(middleware)
+
+import shutil
 
 # Get Manim executable path from environment variables or assume it's in the system PATH
-MANIM_EXECUTABLE = os.getenv("MANIM_EXECUTABLE", "manim")
+default_manim = shutil.which("manim") or r"C:\Users\ACEAR\AppData\Local\Programs\Python\Python311\Scripts\manim.exe"
+MANIM_EXECUTABLE = os.getenv("MANIM_EXECUTABLE", default_manim)
 
 TEMP_DIRS = {}
 BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media")
 os.makedirs(BASE_DIR, exist_ok=True)  # Ensure the media folder exists
 
+# Blocked patterns in manim code — prevent arbitrary code execution
+BLOCKED_CODE_PATTERNS = [
+    r'\bos\.system\b',
+    r'\bsubprocess\b',
+    r'\b__import__\b',
+    r'\beval\s*\(',
+    r'\bexec\s*\(',
+    r'\bopen\s*\(',
+    r'\bcompile\s*\(',
+    r'\bgetattr\s*\(',
+    r'\bglobals\s*\(',
+    r'\bimport\s+os\b',
+    r'\bimport\s+sys\b',
+    r'\bimport\s+shutil\b',
+    r'\bfrom\s+os\b',
+    r'\bfrom\s+subprocess\b',
+]
+
 @mcp.tool()
 def execute_manim_code(manim_code: str) -> str:
-    """Execute the Manim code"""
+    """Execute the Manim code. Only Manim-related imports are allowed."""
+    # ── Input validation ────────────────────────────────────
+    try:
+        manim_code = InputSanitizer.sanitize_string(
+            manim_code, name="manim_code", max_length=10000, strip_html=False
+        )
+    except ValueError as e:
+        return f"❌ {e}"
+
+    # Check for dangerous code patterns
+    for pattern in BLOCKED_CODE_PATTERNS:
+        if regex_module.search(pattern, manim_code):
+            return f"❌ Blocked: code contains dangerous pattern ({pattern}). Only Manim-related code is allowed."
+
     tmpdir = os.path.join(BASE_DIR, "manim_tmp")  
     os.makedirs(tmpdir, exist_ok=True)  # Ensure the temp folder exists
     script_path = os.path.join(tmpdir, "scene.py")
@@ -56,13 +99,17 @@ def execute_manim_code(manim_code: str) -> str:
 def cleanup_manim_temp_dir(directory: str) -> str:
     """Clean up the specified Manim temporary directory after execution."""
     try:
-        if os.path.exists(directory):
-            shutil.rmtree(directory)
-            return f"Cleanup successful for directory: {directory}"
+        # Prevent path traversal — only allow cleanup inside BASE_DIR
+        safe_path = InputSanitizer.sanitize_path(directory, BASE_DIR)
+        if safe_path.exists():
+            shutil.rmtree(safe_path)
+            return f"Cleanup successful for directory: {safe_path}"
         else:
-            return f"Directory not found: {directory}"
+            return f"Directory not found: {safe_path}"
+    except ValueError as e:
+        return f"❌ Security error: {e}"
     except Exception as e:
-        return f"Failed to clean up directory: {directory}. Error: {str(e)}"
+        return f"Failed to clean up directory. Error: {str(e)}"
 
 def _keep_alive(port: int):
     """Background task to ping the health endpoint every 10 minutes."""

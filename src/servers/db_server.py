@@ -12,12 +12,19 @@ import logging
 
 # Ensure we can import from src.scripts
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from src.scripts.init_db import seed_database  # type: ignore
+# pyrefly: ignore [missing-import]
+from src.scripts.init_db import seed_database
+# pyrefly: ignore [missing-import]
+from src.security import create_auth_provider, create_security_middleware, InputSanitizer, OutputSanitizer
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "..", "database.db"))
 logger = logging.getLogger("db_server")
 
-mcp = FastMCP("sqlite-db-server")
+mcp = FastMCP("sqlite-db-server", auth=create_auth_provider())
+
+# ── Security middleware stack ────────────────────────────────
+for middleware in create_security_middleware():
+    mcp.add_middleware(middleware)
 
 
 # ── @mcp.prompt() — one decorator replaces list_prompts + get_prompt ─
@@ -78,6 +85,10 @@ def is_safe_query(sql : str) -> tuple[bool , str]:
 async def query_database(sql: str, ctx: Context, limit: int = 50) -> str:
     """Run a SELECT SQL query on the database. Returns formatted table results. Max 100 rows."""
     await ctx.info(f"Executing query: {sql[:80]}")
+    try:
+        sql = InputSanitizer.sanitize_string(sql, name="sql", max_length=2000, strip_html=False)
+    except ValueError as e:
+        return f"❌ Input validation failed: {e}"
     limit = min(limit,100)
 
     safe, reason = is_safe_query(sql)
@@ -105,7 +116,8 @@ async def query_database(sql: str, ctx: Context, limit: int = 50) -> str:
         data_rows = [" | ".join(str(r[c]) for c in cols) for r in rows]
         table = f"{header}\n{sep}\n" + "\n".join(data_rows)
         await ctx.info("Query completed successfully")
-        return f"✓ {len(rows)} row(s) returned:\n\n{table}"
+        result_text = f"✓ {len(rows)} row(s) returned:\n\n{table}"
+        return OutputSanitizer.sanitize_tool_output(result_text, source="SQLite database")
 
     except aiosqlite.OperationalError as e:
         await ctx.error(f"Query failed: {e}")
@@ -155,6 +167,14 @@ async def list_tables() -> str:
 @mcp.tool()
 async def describe_table(table_name:str) -> str:
     """Show schema for a table: column names, types, and constraints."""
+    try:
+        table_name = InputSanitizer.sanitize_string(
+            table_name, name="table_name", max_length=64,
+            allow_pattern=r'[a-zA-Z_][a-zA-Z0-9_]*'
+        )
+        InputSanitizer.sanitize_sql_input(table_name, name="table_name")
+    except ValueError as e:
+        return f"❌ {e}"
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(f"PRAGMA table_info ({table_name})") as tbl:
             cols = [ r async for r in tbl]

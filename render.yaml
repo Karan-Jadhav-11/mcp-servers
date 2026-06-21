@@ -7,6 +7,8 @@ services:
         value: health_weather_server
       - key: OPENWEATHER_API_KEY
         value: "YOUR_API_KEY_HERE"
+      - key: MCP_API_KEYS
+        value: "YOUR_MCP_API_KEY_HERE"
 
   - type: web
     name: mcp-database
@@ -16,6 +18,8 @@ services:
         value: db_server
       - key: DB_PATH
         value: /app/database.db
+      - key: MCP_API_KEYS
+        value: "YOUR_MCP_API_KEY_HERE"
 
   - type: web
     name: mcp-manim
@@ -23,3 +27,5 @@ services:
     envVars:
       - key: MCP_SERVER
         value: manim_server
+      - key: MCP_API_KEYS
+        value: "YOUR_MCP_API_KEY_HERE"

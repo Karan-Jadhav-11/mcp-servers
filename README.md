@@ -118,3 +118,71 @@ Add the following to your `claude_desktop_config.json`:
 }
 ```
 *(Note: Because these FastMCP servers use SSE transport, you MUST specify `--transport sse-only` when using mcp-remote).*
+
+## Security
+
+All three servers are hardened with production-grade security layers, powered by FastMCP's native middleware system.
+
+### Defence Layers (in order)
+1. **🔒 Authentication** — Bearer token validation via `Authorization: Bearer <key>` header
+2. **⚡ Rate Limiting** — Token bucket algorithm (10 burst, 5 req/sec sustained)
+3. **🧹 Input Sanitization** — String length limits, regex patterns, path traversal prevention, SQL injection blocking
+4. **🧠 Prompt Injection Defence** — Strips known injection patterns from external API/DB responses
+5. **📝 Structured Logging** — JSON-formatted request/response logs (never logs sensitive arguments)
+6. **🛡️ Error Handling** — Clean MCP error responses (no stack traces leaked to clients)
+7. **📏 Response Limiting** — 500KB cap on tool responses to protect LLM context window
+
+### API Key Authentication
+
+Authentication is controlled via the `MCP_API_KEYS` environment variable:
+
+```bash
+# Generate a secure key
+python -c "from src.security import generate_api_key; print(generate_api_key())"
+
+# Set it (comma-separated for multiple keys)
+export MCP_API_KEYS="mcp_Zf8k2vN3pL7mQ9xRsT6hJ4wA1yE5cB0dI"
+```
+
+**Key rotation without downtime:**
+1. Generate a new key
+2. Add it alongside the old key: `MCP_API_KEYS="old-key,new-key"`
+3. Update all clients to use the new key
+4. Remove the old key
+
+**Local development:** Leave `MCP_API_KEYS` empty or unset — auth is disabled automatically.
+
+### Security Checklist
+- ✅ API key middleware rejects unauthenticated requests
+- ✅ Keys compared with `secrets.compare_digest()` (timing-attack safe)
+- ✅ Keys loaded from environment variables (never hardcoded)
+- ✅ Multi-key rotation support without downtime
+- ✅ Every tool argument validated (type, range, length, pattern)
+- ✅ Path traversal prevention via `Path.resolve()` inside base directory
+- ✅ SQL queries checked for dangerous patterns (DROP, DELETE, INSERT, etc.)
+- ✅ String inputs have max-length limits
+- ✅ Numeric inputs have bounds checking
+- ✅ Per-server rate limiting with token bucket algorithm
+- ✅ External content wrapped with `[EXTERNAL DATA]` labels
+- ✅ Known prompt injection patterns detected and stripped
+- ✅ Error messages don't leak internal server details
+- ✅ Dockerfile runs as non-root user
+- ✅ Manim code execution blocks dangerous patterns (os.system, eval, exec, etc.)
+
+## Running Tests
+
+Install test dependencies and run the full suite:
+
+```bash
+uv sync --extra dev
+uv run pytest tests/ -v --tb=short
+```
+
+The test suite covers:
+- **95 tests** across 3 test files
+- Input sanitization (strings, paths, numbers, enums, SQL)
+- Output sanitization (prompt injection detection & stripping)
+- Authentication (key validation, local dev mode)
+- SQL safety (blocked patterns, multi-statement prevention)
+- BMI calculation accuracy
+- Middleware factory creation
