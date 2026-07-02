@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP Mastery — Part 2: Build Your First MCP Server (FastMCP + uv)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:ital,wght@0,300;0,600;0,800;1,300;1,600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:          #f5f2eb;
+  --bg2:         #edeadf;
+  --bg3:         #e2ddd0;
+  --ink:         #1a1714;
+  --ink2:        #3d3830;
+  --ink3:        #6b6456;
+  --accent:      #0369a1;   /* Part 2 = blue accent */
+  --accent-r:    #c2410c;
+  --accent2:     #7c3aed;
+  --accent3:     #166534;
+  --border:      #cdc8bc;
+  --border2:     #b8b1a3;
+  --card:        #faf8f3;
+  --code-bg:     #0f1923;
+  --code-text:   #e2e8f0;
+  --note-bg:     #fef9c3;
+  --note-border: #ca8a04;
+  --warn-bg:     #fff1f2;
+  --warn-border: #e11d48;
+  --info-bg:     #eff6ff;
+  --info-border: #2563eb;
+  --green-bg:    #f0fdf4;
+  --green-border:#16a34a;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  min-height: 100vh;
+}
+
+/* ── PROGRESS BAR ─────────────────────────── */
+#progress-bar {
+  position: fixed; top: 0; left: 0;
+  height: 3px; background: var(--accent);
+  z-index: 999; transition: width .1s; width: 0%;
+}
+
+/* ── LAYOUT ───────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+/* ── SIDEBAR ──────────────────────────────── */
+.sidebar {
+  width: 265px; flex-shrink: 0;
+  background: var(--ink); color: #c8c0b4;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto; padding: 28px 0;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+}
+.sidebar-logo { padding: 0 24px 24px; border-bottom: 1px solid #2e2a25; margin-bottom: 20px; }
+.sidebar-logo .series { color: #5a5448; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; }
+.sidebar-logo .title { color: #f5f2eb; font-size: 14px; font-weight: 600; font-family: 'Fraunces', serif; line-height: 1.3; }
+.sidebar-logo .part-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 9px; padding: 3px 8px; border-radius: 2px; letter-spacing: 2px; margin-top: 8px; }
+.nav-section-label { padding: 0 24px 8px; font-size: 9px; letter-spacing: 3px; color: #3d3830; text-transform: uppercase; }
+.nav-item { display: block; padding: 8px 24px; color: #7a7065; text-decoration: none; transition: all .15s; border-left: 2px solid transparent; line-height: 1.4; }
+.nav-item:hover, .nav-item.active { color: #f5f2eb; border-left-color: var(--accent); background: #1e1b16; }
+.nav-item .num { color: #3d3830; margin-right: 8px; }
+.nav-section { margin-bottom: 20px; }
+.nav-divider { height: 1px; background: #2e2a25; margin: 16px 0; }
+.nav-done { color: #4ade80 !important; }
+
+/* ── MAIN ─────────────────────────────────── */
+.main { flex: 1; max-width: 880px; padding: 60px 64px; min-width: 0; }
+
+/* ── HERO ─────────────────────────────────── */
+.hero { margin-bottom: 56px; padding-bottom: 40px; border-bottom: 2px solid var(--border); }
+.hero-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; margin-bottom: 16px; }
+h1 { font-family: 'Fraunces', serif; font-size: clamp(34px,5vw,52px); font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 18px; }
+h1 em { font-style: italic; color: var(--accent); }
+.hero-desc { font-size: 17px; color: var(--ink3); max-width: 560px; line-height: 1.7; margin-bottom: 28px; }
+.hero-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.meta-chip { font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 5px 12px; border-radius: 3px; background: var(--bg2); border: 1px solid var(--border); color: var(--ink2); letter-spacing: 1px; }
+
+/* ── TOC ──────────────────────────────────── */
+.toc { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; margin-bottom: 48px; }
+.toc-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 2px; color: var(--ink3); text-transform: uppercase; margin-bottom: 14px; }
+.toc a { display: flex; align-items: baseline; gap: 8px; color: var(--ink2); text-decoration: none; padding: 5px 0; font-size: 14px; border-bottom: 1px solid var(--border); transition: color .15s; }
+.toc a:last-child { border-bottom: none; }
+.toc a:hover { color: var(--accent); }
+.toc .toc-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink3); min-width: 28px; }
+
+/* ── SECTION HEADERS ──────────────────────── */
+.section { margin-bottom: 64px; scroll-margin-top: 32px; animation: fadeIn .5s ease both; }
+.section-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 3px; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+h2 { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 800; color: var(--ink); letter-spacing: -.8px; margin-bottom: 20px; line-height: 1.2; }
+h3 { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -.3px; margin: 36px 0 12px; line-height: 1.3; }
+h4 { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin: 28px 0 10px; }
+p { margin-bottom: 16px; color: var(--ink2); }
+p strong { color: var(--ink); font-weight: 600; }
+ul, ol { margin: 12px 0 20px 20px; color: var(--ink2); }
+li { margin-bottom: 8px; line-height: 1.65; }
+
+/* ── CALLOUTS ─────────────────────────────── */
+.callout { border-radius: 6px; padding: 18px 22px; margin: 24px 0; border-left: 4px solid; font-size: 15px; line-height: 1.65; }
+.callout-note  { background: var(--note-bg);  border-color: var(--note-border); }
+.callout-info  { background: var(--info-bg);  border-color: var(--info-border); }
+.callout-warn  { background: var(--warn-bg);  border-color: var(--warn-border); }
+.callout-green { background: var(--green-bg); border-color: var(--green-border); }
+.callout-dark  { background: #0f1923; border-color: var(--accent); }
+.callout-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 2px; font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+.callout-note  .callout-title { color: #92400e; }
+.callout-info  .callout-title { color: #1d4ed8; }
+.callout-warn  .callout-title { color: #be123c; }
+.callout-green .callout-title { color: #15803d; }
+.callout-dark  .callout-title { color: #38bdf8; }
+.callout-dark  p { color: #94a3b8; margin: 0; }
+.callout p { margin: 0; color: var(--ink2); }
+
+/* ── CODE BLOCKS ──────────────────────────── */
+.code-block { background: var(--code-bg); border-radius: 10px; overflow: hidden; margin: 20px 0; border: 1px solid #1e2d3d; box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+.code-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; background: #0a1520; border-bottom: 1px solid #1e2d3d; }
+.code-lang { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #64748b; letter-spacing: 2px; text-transform: uppercase; }
+.code-dots { display: flex; gap: 6px; }
+.code-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.code-dots span:nth-child(1) { background: #ff5f57; }
+.code-dots span:nth-child(2) { background: #ffbd2e; }
+.code-dots span:nth-child(3) { background: #28c840; }
+pre { padding: 22px 26px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.75; color: var(--code-text); }
+
+/* syntax colors */
+.kw  { color: #c792ea; }
+.fn  { color: #82aaff; }
+.str { color: #c3e88d; }
+.num { color: #f78c6c; }
+.cmt { color: #4a6070; font-style: italic; }
+.key { color: #ffcb6b; }
+.op  { color: #89ddff; }
+.typ { color: #ffcb6b; }
+.dec { color: #c792ea; }
+.cls { color: #ffcb6b; }
+.var { color: #e2e8f0; }
+.attr{ color: #82aaff; }
+.val { color: #c3e88d; }
+
+/* line highlight */
+.hl  { background: rgba(56,189,248,0.08); display: block; margin: 0 -26px; padding: 0 26px; border-left: 2px solid #38bdf8; }
+
+/* ── INLINE CODE ──────────────────────────── */
+code { font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: var(--bg3); border: 1px solid var(--border); padding: 1px 6px; border-radius: 3px; color: var(--accent); }
+
+/* ── DIAGRAMS ─────────────────────────────── */
+.diagram-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px 24px 20px; margin: 28px 0; overflow-x: auto; }
+.diagram-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 2px; color: var(--ink3); text-transform: uppercase; margin-bottom: 24px; text-align: center; }
+.diagram-caption { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink3); text-align: center; margin-top: 16px; line-height: 1.6; }
+svg { max-width: 100%; height: auto; }
+
+/* ── STEP FLOW ────────────────────────────── */
+.step-flow { margin: 28px 0; }
+.step-item { display: flex; gap: 20px; margin-bottom: 22px; align-items: flex-start; }
+.step-num { width: 38px; height: 38px; border-radius: 50%; background: var(--accent); color: #fff; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.step-body { flex: 1; }
+.step-body strong { display: block; font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.step-body p { font-size: 14px; margin: 0; color: var(--ink3); line-height: 1.6; }
+
+/* ── TABLES ───────────────────────────────── */
+.compare-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+.compare-table th { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; padding: 12px 16px; background: var(--ink); color: #f5f2eb; text-align: left; }
+.compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--ink2); vertical-align: top; line-height: 1.6; }
+.compare-table tr:nth-child(even) td { background: var(--bg2); }
+.compare-table tr:hover td { background: var(--bg3); }
+
+/* ── CONCEPT BOX ──────────────────────────── */
+.concept-box { background: var(--ink); color: #c8c0b4; border-radius: 10px; padding: 28px 32px; margin: 28px 0; position: relative; overflow: hidden; }
+.concept-box::before { content: '"'; position: absolute; top: -10px; left: 20px; font-family: 'Fraunces', serif; font-size: 120px; color: #2e2a25; line-height: 1; }
+.concept-box p { font-family: 'Fraunces', serif; font-size: 19px; font-style: italic; line-height: 1.6; color: #e8e0d0; position: relative; z-index: 1; margin: 0; }
+.concept-box .author { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #5a5448; margin-top: 12px; letter-spacing: 2px; display: block; position: relative; z-index: 1; }
+
+/* ── MINI CARDS GRID ──────────────────────── */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 24px 0; }
+.mini-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; border-top: 3px solid var(--accent); }
+.mini-card h5 { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+.mini-card p { font-size: 13px; color: var(--ink3); margin: 0; line-height: 1.55; }
+
+/* ── FILE TREE ────────────────────────────── */
+.file-tree { background: var(--code-bg); border-radius: 8px; padding: 20px 24px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.9; border: 1px solid #1e2d3d; margin: 20px 0; }
+.ft-dir  { color: #ffcb6b; }
+.ft-file { color: #c3e88d; }
+.ft-desc { color: #4a6070; margin-left: 8px; font-size: 11px; }
+.ft-root { color: #82aaff; font-weight: 600; }
+
+/* ── TERMINAL ─────────────────────────────── */
+.terminal { background: #0a0e14; border-radius: 8px; overflow: hidden; margin: 20px 0; border: 1px solid #1e2d3d; }
+.term-bar { background: #141c26; padding: 8px 16px; display: flex; align-items: center; gap: 8px; }
+.term-dots { display: flex; gap: 5px; }
+.term-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.term-dots span:nth-child(1){ background:#ff5f57; }
+.term-dots span:nth-child(2){ background:#ffbd2e; }
+.term-dots span:nth-child(3){ background:#28c840; }
+.term-title { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #4a6070; margin-left: 8px; letter-spacing: 1px; }
+.term-body { padding: 18px 22px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.8; }
+.term-prompt { color: #4ade80; }
+.term-cmd    { color: #e2e8f0; }
+.term-out    { color: #64748b; }
+.term-ok     { color: #4ade80; }
+.term-err    { color: #f87171; }
+.term-info   { color: #38bdf8; }
+
+/* ── INSPECTOR BOX ────────────────────────── */
+.inspector-box { border: 2px solid var(--accent2); border-radius: 10px; overflow: hidden; margin: 24px 0; }
+.inspector-header { background: var(--accent2); padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+.inspector-header .title { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: white; font-weight: 600; letter-spacing: 1px; }
+.inspector-body { background: #0f0c1a; padding: 20px; }
+.insp-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.insp-label { color: #7c3aed; min-width: 100px; }
+.insp-value { color: #c3e88d; }
+.insp-result { color: #94a3b8; }
+
+/* ── NEXT PART FOOTER ─────────────────────── */
+.next-part { margin-top: 64px; padding: 32px; background: var(--ink); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.next-part .label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5a5448; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; }
+.next-part .title { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 700; color: #f5f2eb; }
+.next-part .btn { font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 12px 24px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+
+/* ── ANNOTATION ───────────────────────────── */
+.line-annotation { display: flex; gap: 16px; margin: -4px 0 8px; padding: 8px 12px; background: rgba(56,189,248,0.05); border-radius: 4px; border-left: 2px solid #38bdf8; }
+.line-annotation .ann-num { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #38bdf8; min-width: 20px; }
+.line-annotation .ann-text { font-size: 13px; color: var(--ink3); }
+
+/* ── SCROLLBAR ────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+@keyframes fadeIn { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+
+@media (max-width: 768px) { .sidebar { display: none; } .main { padding: 32px 20px; } h2 { font-size: 24px; } }
+
+/* part 2 badge = blue */
+.part-badge-2 { display: inline-block; background: #0369a1; color: #fff; font-size: 9px; padding: 3px 8px; border-radius: 2px; letter-spacing: 2px; margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+
+<div class="layout">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="series">MCP Mastery Series</div>
+    <div class="title">Build Your First MCP Server</div>
+    <span class="part-badge-2">PART 2 OF 3</span>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Sections</div>
+    <a class="nav-item active" href="#big-picture"><span class="num">01</span>The Big Picture</a>
+    <a class="nav-item" href="#project-setup"><span class="num">02</span>Project Setup</a>
+    <a class="nav-item" href="#server-skeleton"><span class="num">03</span>Server Skeleton</a>
+    <a class="nav-item" href="#build-tools"><span class="num">04</span>Building Tools</a>
+    <a class="nav-item" href="#input-schema"><span class="num">05</span>Input Schemas</a>
+    <a class="nav-item" href="#resources"><span class="num">06</span>Exposing Resources</a>
+    <a class="nav-item" href="#error-handling"><span class="num">07</span>Error Handling</a>
+    <a class="nav-item" href="#inspector"><span class="num">08</span>MCP Inspector</a>
+    <a class="nav-item" href="#full-server"><span class="num">09</span>Full Server Code</a>
+    <a class="nav-item" href="#summary"><span class="num">10</span>Summary</a>
+  </div>
+
+  <div class="nav-divider"></div>
+
+  <div class="nav-section">
+    <div class="nav-section-label">Series</div>
+    <a class="nav-item nav-done" href="mcp_part1_foundations.html">Part 1 — Foundations ✓</a>
+    <a class="nav-item active" href="#">Part 2 — Build a Server ←</a>
+    <a class="nav-item" href="#">Part 3 — APIs &amp; Deploy</a>
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<main class="main">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-eyebrow">Part 2 · Day 2 Practical</div>
+    <h1>Build Your First<br><em>MCP Server</em> from Scratch</h1>
+    <p class="hero-desc">
+      We go from zero to a working, testable MCP server — line by line. You'll understand every decision: why the code is structured this way, what each piece does, and how the AI actually calls your tools.
+    </p>
+    <div class="hero-meta">
+      <span class="meta-chip">⏱ 60 min read</span>
+      <span class="meta-chip">💻 FastMCP + uv walkthrough</span>
+      <span class="meta-chip">🔬 5 diagrams</span>
+      <span class="meta-chip">🧪 MCP Inspector guide</span>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">What you'll build</div>
+    <a href="#big-picture"><span class="toc-num">01</span>The big picture — what we're building and why</a>
+    <a href="#project-setup"><span class="toc-num">02</span>Project setup — Python environment &amp; SDK install</a>
+    <a href="#server-skeleton"><span class="toc-num">03</span>Server skeleton — the 20-line foundation every server shares</a>
+    <a href="#build-tools"><span class="toc-num">04</span>Building your first two tools — get_weather &amp; calculate_bmi</a>
+    <a href="#input-schema"><span class="toc-num">05</span>Input schema validation — JSON Schema &amp; Pydantic explained</a>
+    <a href="#resources"><span class="toc-num">06</span>Exposing Resources — static and dynamic (URI templates)</a>
+    <a href="#error-handling"><span class="toc-num">07</span>Error handling — McpError, codes, graceful failures</a>
+    <a href="#inspector"><span class="toc-num">08</span>Testing with MCP Inspector — full walkthrough</a>
+    <a href="#full-server"><span class="toc-num">09</span>Complete server code — everything assembled</a>
+    <a href="#summary"><span class="toc-num">10</span>Summary, checklist &amp; what's next</a>
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       01 — BIG PICTURE
+  ══════════════════════════════════════ -->
+  <div class="section" id="big-picture">
+    <div class="section-label">Section 01</div>
+    <h2>The Big Picture — What We're Building</h2>
+
+    <p>
+      Before touching a single line of code, let's get crystal clear on what a working MCP server looks like end-to-end and how our code fits into the system we studied in Part 1.
+    </p>
+
+    <div class="concept-box">
+      <p>An MCP Server is just a program that listens for JSON-RPC messages, executes code when asked, and sends back results. It's surprisingly simple once you see the pattern.</p>
+      <span class="author">// THE CORE INSIGHT</span>
+    </div>
+
+    <h3>What We'll Build in Part 2</h3>
+    <p>We're building a <strong>Health &amp; Weather MCP Server</strong> in Python with these capabilities:</p>
+
+    <div class="card-grid">
+      <div class="mini-card">
+        <h5>⚙️ Tool 1</h5>
+        <p><code>get_weather</code><br>Accepts a city name, returns current weather data (mocked for now — real API in Part 3)</p>
+      </div>
+      <div class="mini-card">
+        <h5>⚙️ Tool 2</h5>
+        <p><code>calculate_bmi</code><br>Accepts weight &amp; height, returns BMI value, category, and health advice</p>
+      </div>
+      <div class="mini-card">
+        <h5>📄 Resource 1</h5>
+        <p><code>resource://health/tips</code><br>Static health tips document — always the same content</p>
+      </div>
+      <div class="mini-card">
+        <h5>📄 Resource 2</h5>
+        <p><code>resource://weather/{city}</code><br>Dynamic resource — content changes based on city in the URI</p>
+      </div>
+    </div>
+
+    <!-- DIAGRAM 1: What we're building overview -->
+    <div class="diagram-wrap">
+      <div class="diagram-title">Diagram 2.1 — Complete Flow: Claude Desktop → Our Server → Response</div>
+      <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+        <defs>
+          <marker id="a1" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#0369a1"/></marker>
+          <marker id="a2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#166534"/></marker>
+          <marker id="a3" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#7c3aed"/></marker>
+        </defs>
+
+        <!-- User -->
+        <circle cx="50" cy="140" r="30" fill="#faf8f3" stroke="#cdc8bc" stroke-width="1.5"/>
+        <text x="50" y="135" text-anchor="middle" font-size="20">👤</text>
+        <text x="50" y="152" text-anchor="middle" font-size="10" fill="#6b6456">User</text>
+        <text x="50" y="188" text-anchor="middle" font-size="9" fill="#9a8a78">"What is my BMI?</text>
+        <text x="50" y="200" text-anchor="middle" font-size="9" fill="#9a8a78">I weigh 70kg, 175cm"</text>
+
+        <!-- Arrow User → Claude Desktop -->
+        <line x1="80" y1="140" x2="130" y2="140" stroke="#0369a1" stroke-width="1.5" marker-end="url(#a1)"/>
+
+        <!-- Claude Desktop / HOST -->
+        <rect x="130" y="95" width="140" height="90" rx="8" fill="#1e1b16" stroke="#0369a1" stroke-width="1.5"/>
+        <text x="200" y="118" text-anchor="middle" font-size="11" fill="#e8e0d0" font-weight="700">Claude Desktop</text>
+        <text x="200" y="135" text-anchor="middle" font-size="9" fill="#7a7065">HOST + LLM</text>
+        <text x="200" y="152" text-anchor="middle" font-size="9" fill="#7a7065">Sees: "calculate_bmi</text>
+        <text x="200" y="165" text-anchor="middle" font-size="9" fill="#7a7065">tool available → call it"</text>
+        <text x="200" y="215" text-anchor="middle" font-size="9" fill="#0369a1">① Receives user message</text>
+        <text x="200" y="230" text-anchor="middle" font-size="9" fill="#0369a1">② Decides to call tool</text>
+
+        <!-- Arrow Claude → MCP wire -->
+        <line x1="270" y1="140" x2="330" y2="140" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a3)"/>
+        <text x="300" y="132" text-anchor="middle" font-size="9" fill="#7c3aed">tools/call</text>
+        <text x="300" y="155" text-anchor="middle" font-size="9" fill="#7c3aed">JSON-RPC</text>
+
+        <!-- stdio pipe visual -->
+        <rect x="330" y="128" width="60" height="24" rx="3" fill="#1e0a3c" stroke="#7c3aed" stroke-width="1"/>
+        <text x="360" y="145" text-anchor="middle" font-size="9" fill="#c4b5fd">stdin pipe</text>
+
+        <!-- Arrow into our server -->
+        <line x1="390" y1="140" x2="440" y2="140" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a3)"/>
+
+        <!-- OUR SERVER -->
+        <rect x="440" y="65" width="180" height="170" rx="10" fill="#faf8f3" stroke="#0369a1" stroke-width="2"/>
+        <text x="530" y="88" text-anchor="middle" font-size="12" fill="#0369a1" font-weight="700">Our MCP Server</text>
+        <text x="530" y="103" text-anchor="middle" font-size="9" fill="#6b6456">main.py</text>
+
+        <!-- Tools inside server -->
+        <rect x="455" y="115" width="75" height="32" rx="4" fill="#eff6ff" stroke="#0369a1" stroke-width="1"/>
+        <text x="492" y="129" text-anchor="middle" font-size="9" fill="#0369a1" font-weight="700">get_weather</text>
+        <text x="492" y="141" text-anchor="middle" font-size="8" fill="#6b6456">tool ⚙️</text>
+
+        <rect x="540" y="115" width="68" height="32" rx="4" fill="#eff6ff" stroke="#0369a1" stroke-width="1"/>
+        <text x="574" y="129" text-anchor="middle" font-size="9" fill="#0369a1" font-weight="700">calculate_bmi</text>
+        <text x="574" y="141" text-anchor="middle" font-size="8" fill="#6b6456">tool ⚙️</text>
+
+        <!-- Resources inside -->
+        <rect x="455" y="158" width="75" height="32" rx="4" fill="#f0fdf4" stroke="#166534" stroke-width="1"/>
+        <text x="492" y="172" text-anchor="middle" font-size="9" fill="#166534">health/tips</text>
+        <text x="492" y="184" text-anchor="middle" font-size="8" fill="#6b6456">resource 📄</text>
+
+        <rect x="540" y="158" width="68" height="32" rx="4" fill="#f0fdf4" stroke="#166534" stroke-width="1"/>
+        <text x="574" y="172" text-anchor="middle" font-size="9" fill="#166534">weather/{city}</text>
+        <text x="574" y="184" text-anchor="middle" font-size="8" fill="#6b6456">resource 📄</text>
+
+        <!-- Execution annotation -->
+        <text x="530" y="215" text-anchor="middle" font-size="9" fill="#c2410c">③ Executes calculate_bmi(</text>
+        <text x="530" y="228" text-anchor="middle" font-size="9" fill="#c2410c">weight=70, height=175)</text>
+
+        <!-- Arrow back (stdout) -->
+        <line x1="440" y1="155" x2="390" y2="155" stroke="#166534" stroke-width="1.5" marker-end="url(#a2)"/>
+        <rect x="330" y="143" width="60" height="24" rx="3" fill="#052e16" stroke="#166534" stroke-width="1"/>
+        <text x="360" y="160" text-anchor="middle" font-size="9" fill="#4ade80">stdout pipe</text>
+        <line x1="330" y1="155" x2="270" y2="155" stroke="#166534" stroke-width="1.5" marker-end="url(#a2)"/>
+        <text x="300" y="170" text-anchor="middle" font-size="9" fill="#166534">result → Claude</text>
+
+        <!-- Result -->
+        <text x="200" y="255" text-anchor="middle" font-size="9" fill="#166534">④ "BMI = 22.9, Normal weight ✓"</text>
+        <line x1="130" y1="160" x2="80" y2="160" stroke="#166534" stroke-width="1.5" marker-end="url(#a2)"/>
+        <text x="50" y="235" text-anchor="middle" font-size="9" fill="#166534">⑤ Claude replies</text>
+        <text x="50" y="248" text-anchor="middle" font-size="9" fill="#166534">to user ✓</text>
+      </svg>
+      <div class="diagram-caption">The complete request-response cycle. User asks → Claude decides to call our tool → JSON-RPC over stdin → our server executes Python code → result back over stdout → Claude replies to user.</div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">🧠 Mental Model Before We Code</div>
+      <p>Your MCP Server is just a <strong>Python process</strong> that reads JSON from stdin and writes JSON to stdout. FastMCP handles all the protocol details — you just write normal Python functions and decorate them with <code>@mcp.tool()</code>. That's it. No asyncio boilerplate, no manual JSON Schema, no routing logic.</p>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       02 — PROJECT SETUP
+  ══════════════════════════════════════ -->
+  <div class="section" id="project-setup">
+    <div class="section-label">Section 02</div>
+    <h2>Project Setup</h2>
+
+    <p>Let's set up the Python project. We'll keep it simple and focused — one file is all you need for your first server.</p>
+
+    <h3>Step 1 — Create your project folder</h3>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="term-dots"><span></span><span></span><span></span></div>
+        <div class="term-title">TERMINAL (Windows PowerShell)</div>
+      </div>
+      <div class="term-body">
+        <div><span class="term-prompt">$</span> <span class="term-cmd">uv init mcp-health-server</span>     <span class="term-out"># creates folder + pyproject.toml + .venv</span></div>
+        <div><span class="term-prompt">$</span> <span class="term-cmd">cd mcp-health-server</span></div>
+        <div><span class="term-prompt">$</span> <span class="term-cmd">uv python pin 3.12</span>            <span class="term-out"># lock Python version (writes .python-version)</span></div>
+        <div><span class="term-prompt">$</span> <span class="term-cmd">uv add fastmcp pydantic httpx</span> <span class="term-out"># install FastMCP + extras (no activate needed)</span></div>
+        <div class="term-ok">Resolved 12 packages in 340ms</div>
+        <div class="term-ok">Installed fastmcp-2.x.x pydantic-2.x.x httpx-0.x.x ... ✓</div>
+      </div>
+    </div>
+
+    <h3>Step 2 — Understand what was installed</h3>
+
+    <p>The <code>fastmcp</code> package is a high-level framework built on top of the raw MCP SDK. Here's what matters:</p>
+
+    <table class="compare-table">
+      <tr><th>What you import</th><th>What it is</th><th>Why you need it</th></tr>
+      <tr><td><code>from fastmcp import FastMCP</code></td><td>The only import you need</td><td>Creates the server, registers tools &amp; resources, handles the protocol</td></tr>
+      <tr><td><code>mcp = FastMCP("name")</code></td><td>Your server instance</td><td>Everything hangs off this object via decorators</td></tr>
+      <tr><td><code>@mcp.tool()</code></td><td>Tool decorator</td><td>Registers a function as an MCP tool — description comes from the docstring</td></tr>
+      <tr><td><code>@mcp.resource("uri")</code></td><td>Resource decorator</td><td>Registers a function as an MCP resource at the given URI</td></tr>
+      <tr><td><code>mcp.run()</code></td><td>Entry point</td><td>Starts stdio transport, asyncio event loop, and initialization — all in one call</td></tr>
+    </table>
+
+    <h3>Step 3 — Your project structure</h3>
+
+    <div class="file-tree">
+      <div><span class="ft-root">mcp-health-server/</span></div>
+      <div>├── <span class="ft-dir">.venv/</span>                   <span class="ft-desc"># Python virtual env — managed by uv (don't touch)</span></div>
+      <div>├── <span class="ft-file">main.py</span>                 <span class="ft-desc"># ← Our entire MCP server lives here</span></div>
+      <div>├── <span class="ft-file">pyproject.toml</span>          <span class="ft-desc"># project config + dependencies (replaces requirements.txt)</span></div>
+      <div>├── <span class="ft-file">uv.lock</span>                 <span class="ft-desc"># exact locked dependency versions — commit this!</span></div>
+      <div>├── <span class="ft-file">.python-version</span>         <span class="ft-desc"># pinned Python version (e.g. "3.12")</span></div>
+      <div>└── <span class="ft-file">README.md</span>               <span class="ft-desc"># How to run your server</span></div>
+    </div>
+
+    <div class="callout callout-note">
+      <div class="callout-title">📝 How uv handles the virtual environment</div>
+      <p>Unlike pip, <strong>uv manages the <code>.venv</code> for you automatically</strong>. Running <code>uv init</code> or <code>uv add</code> creates and updates it without you ever typing <code>venv\Scripts\activate</code>. Just use <code>uv run python main.py</code> and uv picks the right environment every time — even across multiple projects with different Python versions.</p>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       03 — SERVER SKELETON
+  ══════════════════════════════════════ -->
+  <div class="section" id="server-skeleton">
+    <div class="section-label">Section 03</div>
+    <h2>The Server Skeleton</h2>
+
+    <p>
+      Every MCP server in Python starts with the same foundation — about 20 lines. Let's build it piece by piece, understanding exactly what each line does and why it's needed.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — main.py (skeleton)</div>
+      </div>
+      <pre><span class="cmt"># ─────────────────────────────────────────────────────────────
+# IMPORT — one line is all you need with FastMCP
+# ─────────────────────────────────────────────────────────────</span>
+<span class="kw">from</span> fastmcp <span class="kw">import</span> FastMCP
+
+<span class="cmt"># ─────────────────────────────────────────────────────────────
+# CREATE THE SERVER INSTANCE
+# "health-weather-server" is the name Claude will see.
+# FastMCP replaces Server + InitializationOptions in one line.
+# ─────────────────────────────────────────────────────────────</span>
+<span class="var">mcp</span> <span class="op">=</span> <span class="fn">FastMCP</span>(<span class="str">"health-weather-server"</span>)
+
+<span class="cmt"># ─────────────────────────────────────────────────────────────
+# ENTRY POINT — mcp.run() does everything:
+# starts asyncio, connects stdio transport, handles init.
+# No async def main(), no asyncio.run() needed.
+# ─────────────────────────────────────────────────────────────</span>
+<span class="kw">if</span> __name__ <span class="op">==</span> <span class="str">"__main__"</span>:
+    mcp.<span class="fn">run</span>()</pre>
+    </div>
+
+    <h3>Does FastMCP still use async?</h3>
+    <p>Yes — FastMCP uses asyncio internally, but it <strong>hides all of it from you</strong>. You can write your tool functions as plain synchronous <code>def</code> (FastMCP runs them in a thread pool), or as <code>async def</code> if you need to do async I/O like network calls. Either works — FastMCP adapts automatically. You never write <code>asyncio.run()</code> or manage event loops yourself.</p>
+
+    <!-- DIAGRAM 2: asyncio event loop -->
+    <div class="diagram-wrap">
+      <div class="diagram-title">Diagram 2.2 — How asyncio Handles Multiple MCP Requests</div>
+      <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+        <defs>
+          <marker id="b1" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#0369a1"/></marker>
+          <marker id="b2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#7c3aed"/></marker>
+        </defs>
+
+        <!-- Event loop circle -->
+        <circle cx="380" cy="130" r="70" fill="#0f1923" stroke="#0369a1" stroke-width="2"/>
+        <text x="380" y="122" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="700">asyncio</text>
+        <text x="380" y="138" text-anchor="middle" font-size="12" fill="#38bdf8" font-weight="700">Event Loop</text>
+        <text x="380" y="158" text-anchor="middle" font-size="9" fill="#4a6070">always running</text>
+
+        <!-- Incoming requests -->
+        <rect x="20" y="50" width="130" height="36" rx="5" fill="#1e2d3d" stroke="#0369a1" stroke-width="1"/>
+        <text x="85" y="72" text-anchor="middle" font-size="10" fill="#38bdf8">tools/call (BMI)</text>
+        <line x1="150" y1="68" x2="306" y2="110" stroke="#0369a1" stroke-width="1.5" marker-end="url(#b1)"/>
+
+        <rect x="20" y="115" width="130" height="36" rx="5" fill="#1e2d3d" stroke="#0369a1" stroke-width="1"/>
+        <text x="85" y="137" text-anchor="middle" font-size="10" fill="#38bdf8">tools/call (weather)</text>
+        <line x1="150" y1="133" x2="310" y2="133" stroke="#0369a1" stroke-width="1.5" marker-end="url(#b1)"/>
+
+        <rect x="20" y="180" width="130" height="36" rx="5" fill="#1e2d3d" stroke="#0369a1" stroke-width="1"/>
+        <text x="85" y="202" text-anchor="middle" font-size="10" fill="#38bdf8">resources/read</text>
+        <line x1="150" y1="198" x2="306" y2="158" stroke="#0369a1" stroke-width="1.5" marker-end="url(#b1)"/>
+
+        <!-- Executing tasks -->
+        <rect x="530" y="50" width="200" height="36" rx="5" fill="#0f1923" stroke="#7c3aed" stroke-width="1"/>
+        <text x="630" y="72" text-anchor="middle" font-size="10" fill="#c4b5fd">await calculate_bmi(...)  ⟳</text>
+        <line x1="454" y1="110" x2="530" y2="68" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#b2)"/>
+
+        <rect x="530" y="115" width="200" height="36" rx="5" fill="#0f1923" stroke="#7c3aed" stroke-width="1"/>
+        <text x="630" y="137" text-anchor="middle" font-size="10" fill="#c4b5fd">await get_weather(...)    ⟳</text>
+        <line x1="450" y1="133" x2="530" y2="133" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#b2)"/>
+
+        <rect x="530" y="180" width="200" height="36" rx="5" fill="#0f1923" stroke="#7c3aed" stroke-width="1"/>
+        <text x="630" y="202" text-anchor="middle" font-size="10" fill="#c4b5fd">read_resource(uri)        ✓</text>
+        <line x1="454" y1="158" x2="530" y2="198" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#b2)"/>
+
+        <!-- Label -->
+        <text x="85" y="30" text-anchor="middle" font-size="11" fill="#0369a1" font-weight="700">INCOMING REQUESTS</text>
+        <text x="630" y="30" text-anchor="middle" font-size="11" fill="#7c3aed" font-weight="700">TASKS (concurrent)</text>
+        <text x="380" y="230" text-anchor="middle" font-size="10" fill="#4a6070">Loop picks up each request, dispatches to correct handler, continues — no blocking</text>
+      </svg>
+      <div class="diagram-caption">asyncio lets the server handle multiple requests concurrently. While waiting for one async operation (e.g. network call), it processes other requests. No request blocks another.</div>
+    </div>
+
+    <div class="callout callout-green">
+      <div class="callout-title">✅ Test the Skeleton Now</div>
+      <p>Run <code>uv run python main.py</code> — the server should start and wait (it reads from stdin). Press Ctrl+C to stop. If it runs without errors, your setup is working. We'll add actual tools next. No venv activation needed — <code>uv run</code> handles it.</p>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       04 — BUILDING TOOLS
+  ══════════════════════════════════════ -->
+  <div class="section" id="build-tools">
+    <div class="section-label">Section 04</div>
+    <h2>Building Your First Two Tools</h2>
+
+    <p>
+      Now we add real capabilities. In MCP Python SDK, you register a tool by adding a handler for the <code>list_tools</code> request (which tells Claude what tools exist) and for the <code>call_tool</code> request (which executes them). Let's build both tools step by step.
+    </p>
+
+    <h3>How Tool Registration Works in FastMCP</h3>
+
+    <p>With the raw MCP SDK you needed two separate handlers: one to <em>list</em> tools (<code>list_tools</code>) and one to <em>execute</em> them (<code>call_tool</code>). FastMCP collapses both into a single decorator:</p>
+
+    <ul>
+      <li><strong><code>@mcp.tool()</code></strong> — Decorate any function and it becomes an MCP tool. FastMCP automatically generates the tool name (from the function name), description (from the docstring), and input schema (from Python type annotations). No manual JSON Schema needed.</li>
+    </ul>
+
+    <div class="callout callout-info">
+      <div class="callout-title">🔑 FastMCP reads your Python types</div>
+      <p>A parameter typed as <code>city: str</code> becomes <code>{"type": "string"}</code> in the JSON Schema automatically. <code>weight_kg: float</code> becomes <code>{"type": "number"}</code>. <code>include_forecast: bool = False</code> becomes an optional boolean with a default. FastMCP handles all of this — you just write normal Python function signatures.</p>
+    </div>
+
+    <!-- DIAGRAM 3: Tool registration and call flow -->
+    <div class="diagram-wrap">
+      <div class="diagram-title">Diagram 2.3 — Tool Registration vs Tool Execution Flow</div>
+      <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+        <defs>
+          <marker id="c1" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#0369a1"/></marker>
+          <marker id="c2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#166534"/></marker>
+          <marker id="c3" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#c2410c"/></marker>
+        </defs>
+
+        <!-- === LEFT SIDE: list_tools === -->
+        <text x="185" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#0369a1" letter-spacing="1">PHASE 1 — DISCOVERY (list_tools)</text>
+
+        <rect x="20" y="38" width="120" height="44" rx="6" fill="#1e1b16" stroke="#0369a1" stroke-width="1.5"/>
+        <text x="80" y="58" text-anchor="middle" font-size="11" fill="#e8e0d0" font-weight="700">Claude</text>
+        <text x="80" y="73" text-anchor="middle" font-size="9" fill="#7a7065">MCP Client</text>
+
+        <line x1="140" y1="60" x2="200" y2="60" stroke="#0369a1" stroke-width="1.5" marker-end="url(#c1)"/>
+        <text x="170" y="52" text-anchor="middle" font-size="9" fill="#0369a1">tools/list</text>
+
+        <rect x="200" y="38" width="150" height="80" rx="6" fill="#faf8f3" stroke="#0369a1" stroke-width="1.5"/>
+        <text x="275" y="57" text-anchor="middle" font-size="11" fill="#0369a1" font-weight="700">@mcp.tool() — discovery</text>
+        <text x="275" y="74" text-anchor="middle" font-size="9" fill="#6b6456">Returns array of</text>
+        <text x="275" y="88" text-anchor="middle" font-size="9" fill="#6b6456">Tool objects</text>
+        <text x="275" y="102" text-anchor="middle" font-size="9" fill="#6b6456">(name, desc, schema)</text>
+
+        <line x1="200" y1="85" x2="140" y2="85" stroke="#166534" stroke-width="1.5" marker-end="url(#c2)"/>
+        <text x="170" y="100" text-anchor="middle" font-size="9" fill="#166534">[Tool(...), Tool(...)]</text>
+
+        <text x="185" y="145" text-anchor="middle" font-size="9" fill="#0369a1">Claude now knows about</text>
+        <text x="185" y="158" text-anchor="middle" font-size="9" fill="#0369a1">get_weather &amp; calculate_bmi</text>
+
+        <!-- Divider -->
+        <line x1="380" y1="10" x2="380" y2="310" stroke="#cdc8bc" stroke-width="1" stroke-dasharray="5,4"/>
+
+        <!-- === RIGHT SIDE: call_tool === -->
+        <text x="570" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#c2410c" letter-spacing="1">PHASE 2 — EXECUTION (call_tool)</text>
+
+        <rect x="400" y="38" width="120" height="44" rx="6" fill="#1e1b16" stroke="#c2410c" stroke-width="1.5"/>
+        <text x="460" y="58" text-anchor="middle" font-size="11" fill="#e8e0d0" font-weight="700">Claude</text>
+        <text x="460" y="73" text-anchor="middle" font-size="9" fill="#7a7065">decided to call BMI</text>
+
+        <line x1="520" y1="60" x2="570" y2="60" stroke="#c2410c" stroke-width="1.5" marker-end="url(#c3)"/>
+        <text x="545" y="52" text-anchor="middle" font-size="9" fill="#c2410c">tools/call</text>
+
+        <rect x="570" y="30" width="170" height="100" rx="6" fill="#faf8f3" stroke="#c2410c" stroke-width="1.5"/>
+        <text x="655" y="52" text-anchor="middle" font-size="11" fill="#c2410c" font-weight="700">@mcp.tool() — execution</text>
+        <text x="655" y="68" text-anchor="middle" font-size="9" fill="#6b6456">name = "calculate_bmi"</text>
+        <text x="655" y="82" text-anchor="middle" font-size="9" fill="#6b6456">args = {weight:70,</text>
+        <text x="655" y="96" text-anchor="middle" font-size="9" fill="#6b6456">        height:175}</text>
+        <text x="655" y="110" text-anchor="middle" font-size="9" fill="#166534">→ runs your Python code</text>
+        <text x="655" y="123" text-anchor="middle" font-size="9" fill="#166534">→ BMI = 22.9</text>
+
+        <line x1="570" y1="110" x2="520" y2="110" stroke="#166534" stroke-width="1.5" marker-end="url(#c2)"/>
+        <text x="545" y="127" text-anchor="middle" font-size="9" fill="#166534">TextContent: "BMI=22.9"</text>
+
+        <!-- YOUR CODE BOX -->
+        <rect x="400" y="170" width="340" height="110" rx="6" fill="#0f1923" stroke="#4a6070" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="570" y="190" text-anchor="middle" font-size="10" fill="#64748b">YOUR PYTHON CODE runs here ↓</text>
+        <text x="415" y="210" font-size="11" fill="#c3e88d">  weight = args["weight"]</text>
+        <text x="415" y="228" font-size="11" fill="#c3e88d">  bmi = weight / (height/100)**2</text>
+        <text x="415" y="246" font-size="11" fill="#c3e88d">  return [TextContent(bmi)]</text>
+        <text x="415" y="268" font-size="9" fill="#4a6070">  # Any valid Python code works here — DB queries, API calls, math...</text>
+      </svg>
+      <div class="diagram-caption">In FastMCP, <code>@mcp.tool()</code> replaces both phases. FastMCP handles discovery (list_tools) and routing (call_tool) automatically. You write one function; FastMCP exposes it as a full MCP tool.</div>
+    </div>
+
+    <h3>Tool 1 — <code>get_weather</code></h3>
+    <p>Add this to <code>main.py</code> after creating the <code>mcp</code> object. One decorator is all you need — FastMCP reads the function name, docstring, and type hints automatically.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — list_tools handler (tells Claude what tools exist)</div>
+      </div>
+      <pre><span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">get_weather</span>(city: str) <span class="op">-></span> str:
+<span class="hl">    <span class="str">"""</span></span>
+<span class="hl">    <span class="str">Get the current weather for a city.</span>                     <span class="cmt"># LLM reads THIS!</span></span>
+<span class="hl">    <span class="str">Returns temperature, conditions, and humidity.</span>           <span class="cmt"># be precise &amp; clear</span></span>
+<span class="hl">    <span class="str">Use this when the user asks about weather,</span></span>
+<span class="hl">    <span class="str">temperature, or whether to bring an umbrella.</span></span>
+<span class="hl">    <span class="str">"""</span></span>
+    <span class="cmt"># FastMCP guarantees `city` is a str — no manual arg extraction</span>
+    mock_data <span class="op">=</span> {
+        <span class="str">"Mumbai"</span>:   {<span class="str">"temp"</span>: <span class="num">34</span>, <span class="str">"condition"</span>: <span class="str">"Partly Cloudy"</span>, <span class="str">"humidity"</span>: <span class="num">78</span>},
+        <span class="str">"Delhi"</span>:    {<span class="str">"temp"</span>: <span class="num">42</span>, <span class="str">"condition"</span>: <span class="str">"Sunny"</span>,         <span class="str">"humidity"</span>: <span class="num">30</span>},
+        <span class="str">"London"</span>:   {<span class="str">"temp"</span>: <span class="num">14</span>, <span class="str">"condition"</span>: <span class="str">"Rainy"</span>,          <span class="str">"humidity"</span>: <span class="num">85</span>},
+        <span class="str">"New York"</span>: {<span class="str">"temp"</span>: <span class="num">22</span>, <span class="str">"condition"</span>: <span class="str">"Clear"</span>,          <span class="str">"humidity"</span>: <span class="num">55</span>},
+    }
+    weather <span class="op">=</span> mock_data.<span class="fn">get</span>(city.title(), {<span class="str">"temp"</span>: <span class="num">25</span>, <span class="str">"condition"</span>: <span class="str">"Unknown"</span>, <span class="str">"humidity"</span>: <span class="num">60</span>})
+
+    <span class="cmt"># Return a plain string — FastMCP wraps it in TextContent automatically</span>
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"""🌤️ Weather for {city.title()}:
+   Temperature : {weather['temp']}°C
+   Condition   : {weather['condition']}
+   Humidity    : {weather['humidity']}%"""</span>
+
+
+<span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">calculate_bmi</span>(weight_kg: float, height_cm: float) <span class="op">-></span> str:
+    <span class="str">"""
+    Calculate Body Mass Index (BMI) from weight and height.
+    Returns BMI value, category (Underweight/Normal/Overweight/Obese),
+    and basic health advice. Use when user mentions weight and height.
+    """</span>
+    <span class="kw">if</span> weight_kg <span class="op">&lt;=</span> <span class="num">0</span> <span class="kw">or</span> height_cm <span class="op">&lt;=</span> <span class="num">0</span>:
+        <span class="kw">return</span> <span class="str">"❌ Weight and height must be positive numbers."</span>
+
+    bmi <span class="op">=</span> <span class="fn">round</span>(weight_kg <span class="op">/</span> (height_cm <span class="op">/</span> <span class="num">100</span>) <span class="op">**</span> <span class="num">2</span>, <span class="num">1</span>)
+
+    <span class="kw">if</span>   bmi <span class="op">&lt;</span> <span class="num">18.5</span>: category, advice <span class="op">=</span> <span class="str">"Underweight"</span>, <span class="str">"Consider consulting a nutritionist."</span>
+    <span class="kw">elif</span> bmi <span class="op">&lt;</span> <span class="num">25.0</span>: category, advice <span class="op">=</span> <span class="str">"Normal weight"</span>, <span class="str">"You're in a healthy range! ✓"</span>
+    <span class="kw">elif</span> bmi <span class="op">&lt;</span> <span class="num">30.0</span>: category, advice <span class="op">=</span> <span class="str">"Overweight"</span>,    <span class="str">"Diet and exercise improvements may help."</span>
+    <span class="kw">else</span>:            category, advice <span class="op">=</span> <span class="str">"Obese"</span>,          <span class="str">"Please consult a healthcare professional."</span>
+
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"""⚖️  BMI Calculation:
+   Weight     : {weight_kg} kg
+   Height     : {height_cm} cm
+   BMI Score  : {bmi}
+   Category   : {category}
+   Advice     : {advice}"""</span></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="callout-title">⚠️ The Most Important Part: Tool Docstrings</div>
+      <p>The function <strong>docstring</strong> is what the LLM reads to decide <em>when</em> to call your tool. In FastMCP there is no separate <code>description</code> field — the docstring IS the description. Write it like you're explaining the tool to a smart person who has never seen it. Include: what it does, what data it returns, and when to use it. Bad docstrings = tool never gets called or gets called at wrong times.</p>
+    </div>
+
+    <h3>What FastMCP returns to Claude</h3>
+    <p>
+      In the raw SDK, tools must return a <code>list[TextContent]</code> with explicit type fields. FastMCP removes this boilerplate — just return a plain string, dict, or Pydantic model and FastMCP wraps it correctly. For advanced use you can still return typed content objects directly.
+    </p>
+
+    <table class="compare-table">
+      <tr><th>Return value</th><th>FastMCP sends to Claude</th></tr>
+      <tr><td><code>return "some text"</code></td><td><code>TextContent(type="text", text="some text")</code></td></tr>
+      <tr><td><code>return {"key": "val"}</code></td><td>JSON-serialised TextContent automatically</td></tr>
+      <tr><td><code>return Image(...)</code></td><td><code>ImageContent</code> — for charts, screenshots</td></tr>
+    </table>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       05 — INPUT SCHEMA VALIDATION
+  ══════════════════════════════════════ -->
+  <div class="section" id="input-schema">
+    <div class="section-label">Section 05</div>
+    <h2>Input Schema Validation</h2>
+
+    <p>
+      When Claude calls your tool with arguments, how do you ensure those arguments are valid? What if Claude sends a string where you expect a number? What if a required field is missing? This is where <strong>JSON Schema</strong> and <strong>Pydantic</strong> come in.
+    </p>
+
+    <h3>Layer 1 — JSON Schema (auto-generated by FastMCP)</h3>
+
+    <p>FastMCP automatically converts your function signature to a JSON Schema. This schema does two things simultaneously:</p>
+    <ol>
+      <li><strong>Guides the LLM</strong> — Claude reads the schema to know <em>what arguments to provide</em> when calling the tool. Your Python type hints directly influence what Claude sends.</li>
+      <li><strong>Documents the API</strong> — MCP Inspector and other tooling use the schema to build UI and catch bad calls before they reach your code.</li>
+    </ol>
+
+    <p>Understanding what FastMCP generates helps you write better type hints:</p>
+
+    <p>JSON Schema is a standard for describing the shape of JSON data. Here's how every key part works:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">JSON Schema — Complete Field Guide</div>
+      </div>
+      <pre>{
+  <span class="key">"type"</span>: <span class="str">"object"</span>,          <span class="cmt">// Top-level is always "object" (a dict of args)</span>
+
+  <span class="key">"properties"</span>: {            <span class="cmt">// Define each argument here</span>
+    <span class="key">"city"</span>: {
+      <span class="key">"type"</span>: <span class="str">"string"</span>,       <span class="cmt">// Valid types: string, number, integer, boolean, array, object</span>
+      <span class="key">"description"</span>: <span class="str">"..."</span>, <span class="cmt">// LLM reads this — make it informative!</span>
+      <span class="key">"minLength"</span>: <span class="num">1</span>,          <span class="cmt">// Optional: string must be non-empty</span>
+      <span class="key">"maxLength"</span>: <span class="num">100</span>         <span class="cmt">// Optional: string max length</span>
+    },
+    <span class="key">"weight_kg"</span>: {
+      <span class="key">"type"</span>: <span class="str">"number"</span>,       <span class="cmt">// Accepts floats (70.5 is valid)</span>
+      <span class="key">"minimum"</span>: <span class="num">1</span>,           <span class="cmt">// Optional: value must be ≥ 1</span>
+      <span class="key">"maximum"</span>: <span class="num">500</span>          <span class="cmt">// Optional: value must be ≤ 500</span>
+    },
+    <span class="key">"age"</span>: {
+      <span class="key">"type"</span>: <span class="str">"integer"</span>,      <span class="cmt">// Only whole numbers (no 25.5)</span>
+    },
+    <span class="key">"unit"</span>: {
+      <span class="key">"type"</span>: <span class="str">"string"</span>,
+      <span class="key">"enum"</span>: [<span class="str">"metric"</span>, <span class="str">"imperial"</span>]  <span class="cmt">// Only these exact values allowed</span>
+    },
+    <span class="key">"include_forecast"</span>: {
+      <span class="key">"type"</span>: <span class="str">"boolean"</span>,      <span class="cmt">// true or false only</span>
+      <span class="key">"default"</span>: <span class="kw">false</span>        <span class="cmt">// Used if not provided</span>
+    }
+  },
+
+  <span class="key">"required"</span>: [<span class="str">"city"</span>, <span class="str">"weight_kg"</span>],  <span class="cmt">// THESE fields MUST be provided</span>
+  <span class="key">"additionalProperties"</span>: <span class="kw">false</span>           <span class="cmt">// Reject any extra unknown fields</span>
+}</pre>
+    </div>
+
+    <h3>Layer 2 — Pydantic (Python-level validation)</h3>
+
+    <p>JSON Schema validates the shape, but you should also validate the values inside your Python code using <strong>Pydantic</strong>. Pydantic lets you define a Python class that describes your expected arguments — it automatically validates, converts types, and raises helpful errors.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — Pydantic models for argument validation</div>
+      </div>
+      <pre><span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel, Field, validator
+
+<span class="cmt"># Define a Pydantic model for each tool's arguments</span>
+<span class="kw">class</span> <span class="cls">WeatherArgs</span>(BaseModel):
+    city: str <span class="op">=</span> <span class="fn">Field</span>(
+        ...,                              <span class="cmt"># ... means required (no default)</span>
+        min_length<span class="op">=</span><span class="num">1</span>,
+        max_length<span class="op">=</span><span class="num">100</span>,
+        description<span class="op">=</span><span class="str">"City name for weather lookup"</span>
+    )
+
+    <span class="cmt"># Custom validator — runs after type check</span>
+    <span class="dec">@validator</span>(<span class="str">"city"</span>)
+    <span class="kw">def</span> <span class="fn">city_must_be_non_empty</span>(cls, v):
+        <span class="kw">if not</span> v.<span class="fn">strip</span>():
+            <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="str">"City cannot be whitespace only"</span>)
+        <span class="kw">return</span> v.<span class="fn">strip</span>().<span class="fn">title</span>()   <span class="cmt"># normalize: "MUMBAI" → "Mumbai"</span>
+
+
+<span class="kw">class</span> <span class="cls">BmiArgs</span>(BaseModel):
+    weight_kg: <span class="typ">float</span> <span class="op">=</span> <span class="fn">Field</span>(..., gt<span class="op">=</span><span class="num">0</span>, le<span class="op">=</span><span class="num">500</span>)   <span class="cmt"># gt=greater than 0</span>
+    height_cm: <span class="typ">float</span> <span class="op">=</span> <span class="fn">Field</span>(..., gt<span class="op">=</span><span class="num">0</span>, le<span class="op">=</span><span class="num">300</span>)   <span class="cmt"># le=less than or equal 300</span>
+
+
+<span class="cmt"># --- Using the models in your tool handler ---</span>
+<span class="kw">async def</span> <span class="fn">_get_weather</span>(arguments: dict):
+    <span class="kw">try</span>:
+        args <span class="op">=</span> <span class="fn">WeatherArgs</span>(<span class="op">**</span>arguments)   <span class="cmt"># validates AND converts types</span>
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        <span class="kw">raise</span> types.<span class="fn">McpError</span>(
+            types.ErrorCode.<span class="var">INVALID_PARAMS</span>,
+            <span class="fn">f</span><span class="str">"Invalid arguments: {e}"</span>
+        )
+
+    city <span class="op">=</span> args.city   <span class="cmt"># guaranteed to be a clean, capitalized string</span>
+    <span class="cmt"># ... rest of your logic</span></pre>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-title">🔑 Two-Layer Validation Strategy</div>
+      <p>In FastMCP: <strong>Python type annotations → JSON Schema</strong> automatically (FastMCP generates it). <strong>Pydantic</strong> → pass a <code>BaseModel</code> as a function argument and FastMCP validates it before your function even runs. You never touch a raw <code>arguments</code> dict.</p>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       06 — RESOURCES
+  ══════════════════════════════════════ -->
+  <div class="section" id="resources">
+    <div class="section-label">Section 06</div>
+    <h2>Exposing Resources</h2>
+
+    <p>
+      Resources let the AI read data passively — like attaching a file to a conversation. Unlike tools, resources have no side effects and are identified by URIs (addresses). We'll build two: one static (always the same content) and one dynamic (content changes based on the URI).
+    </p>
+
+    <h3>How Resources Work in MCP</h3>
+
+    <p>In FastMCP, resources use a single decorator just like tools — <strong>no separate list/read handlers needed</strong>:</p>
+    <ul>
+      <li><strong><code>@mcp.resource("resource://path")</code></strong> — For static resources with a fixed URI. FastMCP lists and reads it automatically.</li>
+      <li><strong><code>@mcp.resource("resource://path/{param}")</code></strong> — For dynamic resources with URI template parameters. FastMCP extracts the parameter from the URI and passes it as a function argument.</li>
+    </ul>
+
+    <!-- DIAGRAM 4: Static vs Dynamic resource -->
+    <div class="diagram-wrap">
+      <div class="diagram-title">Diagram 2.4 — Static vs Dynamic Resource URI Patterns</div>
+      <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono, monospace" font-size="11">
+        <defs>
+          <marker id="d1" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#166534"/></marker>
+          <marker id="d2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#7c3aed"/></marker>
+        </defs>
+
+        <!-- LEFT: static -->
+        <text x="185" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#166534">STATIC RESOURCE</text>
+        <text x="185" y="38" text-anchor="middle" font-size="10" fill="#6b6456">Same content every time</text>
+
+        <rect x="20" y="55" width="330" height="45" rx="6" fill="#f0fdf4" stroke="#166534" stroke-width="1.5"/>
+        <text x="185" y="73" text-anchor="middle" font-size="12" fill="#166534" font-weight="700">resource://health/tips</text>
+        <text x="185" y="89" text-anchor="middle" font-size="10" fill="#6b6456">Fixed URI — always maps to same content</text>
+
+        <line x1="185" y1="100" x2="185" y2="130" stroke="#166534" stroke-width="1.5" marker-end="url(#d1)"/>
+        <text x="205" y="120" font-size="10" fill="#6b6456">read_resource(uri)</text>
+
+        <rect x="20" y="130" width="330" height="80" rx="6" fill="#052e16" stroke="#166534" stroke-width="1"/>
+        <text x="35" y="152" font-size="11" fill="#4ade80"># Always returns the same data</text>
+        <text x="35" y="170" font-size="11" fill="#c3e88d">if uri == "resource://health/tips":</text>
+        <text x="35" y="188" font-size="11" fill="#c3e88d">    return STATIC_HEALTH_TIPS</text>
+        <text x="35" y="206" font-size="10" fill="#4a6070"># No variable. Content never changes.</text>
+
+        <text x="185" y="240" text-anchor="middle" font-size="10" fill="#166534">Use for: docs, configs, reference data</text>
+        <text x="185" y="255" text-anchor="middle" font-size="10" fill="#166534">that don't depend on a parameter</text>
+
+        <!-- Divider -->
+        <line x1="380" y1="15" x2="380" y2="268" stroke="#cdc8bc" stroke-width="1" stroke-dasharray="5,4"/>
+
+        <!-- RIGHT: dynamic -->
+        <text x="575" y="22" text-anchor="middle" font-size="12" font-weight="700" fill="#7c3aed">DYNAMIC RESOURCE (URI Template)</text>
+        <text x="575" y="38" text-anchor="middle" font-size="10" fill="#6b6456">Content changes with URI parameter</text>
+
+        <rect x="395" y="55" width="350" height="45" rx="6" fill="#1e0a3c" stroke="#7c3aed" stroke-width="1.5"/>
+        <text x="570" y="73" text-anchor="middle" font-size="12" fill="#c4b5fd" font-weight="700">resource://weather/<tspan fill="#f78c6c">{city}</tspan></text>
+        <text x="570" y="89" text-anchor="middle" font-size="10" fill="#6b6456">URI Template — {city} is a variable slot</text>
+
+        <!-- Three arrows for three URIs -->
+        <line x1="460" y1="100" x2="430" y2="135" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#d2)"/>
+        <text x="415" y="130" text-anchor="end" font-size="9" fill="#7c3aed">/Mumbai</text>
+        <line x1="570" y1="100" x2="570" y2="130" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#d2)"/>
+        <text x="570" y="125" text-anchor="middle" font-size="9" fill="#7c3aed">/London</text>
+        <line x1="680" y1="100" x2="715" y2="135" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#d2)"/>
+        <text x="720" y="130" font-size="9" fill="#7c3aed">/Tokyo</text>
+
+        <rect x="395" y="135" width="350" height="80" rx="6" fill="#0a0514" stroke="#7c3aed" stroke-width="1"/>
+        <text x="410" y="157" font-size="11" fill="#c4b5fd"># Extract the variable from URI</text>
+        <text x="410" y="175" font-size="11" fill="#c3e88d">city = uri.split("/")[-1]</text>
+        <text x="410" y="193" font-size="11" fill="#c3e88d">return fetch_weather_for(city)</text>
+        <text x="410" y="211" font-size="10" fill="#4a6070"># Different city → different content</text>
+
+        <text x="570" y="240" text-anchor="middle" font-size="10" fill="#7c3aed">Use for: user profiles, per-item data,</text>
+        <text x="570" y="255" text-anchor="middle" font-size="10" fill="#7c3aed">anything parameterized by an ID</text>
+      </svg>
+      <div class="diagram-caption">Static resources have a fixed URI. Dynamic resources use URI templates with {variable} slots — the same handler serves many different URIs based on what's in the {slot}.</div>
+    </div>
+
+    <h3>Implementing Both Resource Types</h3>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — @mcp.resource() decorators (static and dynamic)</div>
+      </div>
+      <pre><span class="cmt"># ─── STATIC RESOURCE — same content every time ───────────────</span>
+HEALTH_TIPS <span class="op">=</span> <span class="str">"""# Daily Health Tips
+1. 💧 Drink 8 glasses of water daily
+2. 😴 Sleep 7-9 hours per night
+3. 🏃 Exercise at least 30 min/day
+4. 🥦 Eat 5 portions of fruit/veg daily
+5. 🚫 Limit processed foods and sugar
+"""</span>
+
+<span class="dec">@mcp.resource</span>(<span class="str">"resource://health/tips"</span>)       <span class="cmt"># fixed URI — no parameters</span>
+<span class="kw">def</span> <span class="fn">health_tips</span>() <span class="op">-></span> str:
+    <span class="str">"""Daily health and wellness tips document."""</span>
+    <span class="kw">return</span> HEALTH_TIPS                           <span class="cmt"># plain string — FastMCP wraps it</span>
+
+
+<span class="cmt"># ─── DYNAMIC RESOURCE — URI Template with {city} slot ────────</span>
+<span class="dec">@mcp.resource</span>(<span class="str">"resource://weather/{city}"</span>)    <span class="cmt"># {city} becomes a function arg</span>
+<span class="kw">def</span> <span class="fn">city_weather</span>(city: str) <span class="op">-></span> str:
+    <span class="str">"""Weather data for a specific city. Replace {city} with city name."""</span>
+    mock_data <span class="op">=</span> {
+        <span class="str">"mumbai"</span>: {<span class="str">"temp"</span>: <span class="num">34</span>, <span class="str">"condition"</span>: <span class="str">"Partly Cloudy"</span>, <span class="str">"humidity"</span>: <span class="num">78</span>},
+        <span class="str">"london"</span>: {<span class="str">"temp"</span>: <span class="num">14</span>, <span class="str">"condition"</span>: <span class="str">"Rainy"</span>,          <span class="str">"humidity"</span>: <span class="num">85</span>},
+    }
+    <span class="cmt"># FastMCP extracts city from the URI and passes it directly as an arg</span>
+    w <span class="op">=</span> mock_data.<span class="fn">get</span>(city.lower(), {<span class="str">"temp"</span>: <span class="num">25</span>, <span class="str">"condition"</span>: <span class="str">"Unknown"</span>, <span class="str">"humidity"</span>: <span class="num">60</span>})
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"Weather for {city.title()}: {w['temp']}°C, {w['condition']}, {w['humidity']}% humidity"</span></pre>
+    </div>
+
+    <h3>MIME Types — Tell the Client What Format the Data Is</h3>
+    <p>The <code>mimeType</code> field tells the MCP Client what type of content you're returning. This matters because the Host can render it differently depending on the type:</p>
+
+    <table class="compare-table">
+      <tr><th>mimeType</th><th>Use for</th></tr>
+      <tr><td><code>text/plain</code></td><td>Plain text, log output, free-form strings</td></tr>
+      <tr><td><code>application/json</code></td><td>Structured data — config files, API responses</td></tr>
+      <tr><td><code>text/markdown</code></td><td>Markdown documents — README files, docs</td></tr>
+      <tr><td><code>image/png</code> or <code>image/jpeg</code></td><td>Binary image data (use <code>BlobResourceContents</code>)</td></tr>
+    </table>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       07 — ERROR HANDLING
+  ══════════════════════════════════════ -->
+  <div class="section" id="error-handling">
+    <div class="section-label">Section 07</div>
+    <h2>Error Handling</h2>
+
+    <p>
+      Your server will encounter bad input, missing data, network failures, and edge cases. Handling these gracefully is essential — a crashed server is useless, and a server that returns cryptic errors confuses both the LLM and the user.
+    </p>
+
+    <h3>The Two Types of Errors in MCP</h3>
+
+    <p>MCP distinguishes between two fundamentally different kinds of errors, and you must handle them differently:</p>
+
+    <div class="card-grid">
+      <div class="mini-card" style="border-top-color:#c2410c">
+        <h5 style="color:#c2410c">🔴 Protocol Errors</h5>
+        <p>Something went wrong at the MCP layer — unknown tool name, missing required parameter, invalid JSON. Raise a Python exception (<code>ValueError</code>, <code>TypeError</code>, etc). FastMCP converts it to a JSON-RPC error automatically.</p>
+      </div>
+      <div class="mini-card" style="border-top-color:#ca8a04">
+        <h5 style="color:#ca8a04">🟡 Tool Execution Errors</h5>
+        <p>Your tool ran successfully, but the result is an error (e.g. city not found, API down). Return the error <strong>as a plain string from your tool function</strong>. The LLM reads it and explains the problem to the user intelligently.</p>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="callout-title">⚠️ Critical Distinction</div>
+      <p>This confuses many beginners. A "city not found" error is <strong>not</strong> a protocol error — your code ran fine, it just found no data. Return it as a string from the function. Only raise a Python exception for things like wrong argument types or logic errors — FastMCP handles the rest.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — Error Handling in FastMCP</div>
+      </div>
+      <pre><span class="cmt"># ── PATTERN 1: Return error string (business logic failure) ───</span>
+<span class="cmt"># Tool functions just return strings — error messages are strings too</span>
+<span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">get_weather</span>(city: str) <span class="op">-></span> str:
+    <span class="str">"""Get current weather for a city."""</span>
+    <span class="kw">if not</span> city.<span class="fn">strip</span>():
+        <span class="cmt"># ✓ Return a friendly error string — no exception needed</span>
+        <span class="kw">return</span> <span class="str">"❌ City name cannot be empty."</span>
+
+    <span class="kw">try</span>:
+        weather_data <span class="op">=</span> <span class="fn">fetch_weather_api</span>(city)
+    <span class="kw">except</span> CityNotFoundError:
+        <span class="kw">return</span> <span class="fn">f</span><span class="str">"❌ City '{city}' not found. Try: Mumbai, Delhi, London."</span>
+    <span class="kw">except</span> APITimeoutError:
+        <span class="kw">return</span> <span class="str">"❌ Weather API timed out. Please try again in a moment."</span>
+    <span class="kw">except</span> Exception <span class="kw">as</span> e:
+        <span class="kw">return</span> <span class="fn">f</span><span class="str">"❌ Unexpected error: {str(e)[:200]}"</span>
+    <span class="kw">return</span> <span class="fn">format_weather</span>(weather_data)
+
+
+<span class="cmt"># ── PATTERN 2: Raise exception (invalid input — protocol error) ─</span>
+<span class="cmt"># FastMCP converts Python exceptions → MCP error codes automatically</span>
+<span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">calculate_bmi</span>(weight_kg: float, height_cm: float) <span class="op">-></span> str:
+    <span class="str">"""Calculate BMI from weight and height."""</span>
+    <span class="kw">if</span> weight_kg <span class="op">&lt;=</span> <span class="num">0</span> <span class="kw">or</span> height_cm <span class="op">&lt;=</span> <span class="num">0</span>:
+        <span class="kw">raise</span> <span class="fn">ValueError</span>(<span class="str">"weight_kg and height_cm must be positive"</span>)
+        <span class="cmt"># FastMCP → McpError(INVALID_PARAMS) automatically</span>
+    <span class="cmt"># ... rest of logic</span>
+
+
+<span class="cmt"># ── FASTMCP EXCEPTION → MCP ERROR CODE MAPPING ───────────────
+# ValueError, TypeError   → INVALID_PARAMS   (-32602)
+# NotImplementedError     → METHOD_NOT_FOUND  (-32601)
+# PermissionError         → INTERNAL_ERROR    (-32603)
+# Any other Exception     → INTERNAL_ERROR    (-32603)
+#
+# You never need to import McpError or ErrorCode directly —
+# FastMCP handles the mapping from standard Python exceptions.</span></pre>
+    </div>
+
+    <h3>The Golden Rule of MCP Error Handling</h3>
+    <div class="callout callout-green">
+      <div class="callout-title">✅ Rule: Never crash. Always respond.</div>
+      <p>Wrap all tool logic in try/except. In FastMCP, unhandled exceptions are caught and converted to error responses automatically — but you should still handle specific errors yourself so you can return helpful messages. Always prefer returning a clear error string over crashing.</p>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       08 — MCP INSPECTOR
+  ══════════════════════════════════════ -->
+  <div class="section" id="inspector">
+    <div class="section-label">Section 08</div>
+    <h2>Testing with MCP Inspector</h2>
+
+    <p>
+      Before connecting your server to Claude Desktop, test it using <strong>MCP Inspector</strong> — a browser-based debugging tool that connects directly to your server and lets you call tools, read resources, and inspect messages manually.
+    </p>
+
+    <h3>Installing and Launching MCP Inspector</h3>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="term-dots"><span></span><span></span><span></span></div>
+        <div class="term-title">TERMINAL (PowerShell — run in your project folder)</div>
+      </div>
+      <div class="term-body">
+        <div><span class="term-prompt">$</span> <span class="term-cmd">npx @modelcontextprotocol/inspector uv run python main.py</span></div>
+        <div class="term-out"># npx downloads &amp; runs inspector (needs Node.js installed)</div>
+        <div class="term-out"># uv run ensures the right .venv is used — no activation needed</div>
+        <div class="term-info">🔍 MCP Inspector running at http://localhost:5173</div>
+        <div class="term-info">🟢 Connected to: health-weather-server v0.1.0</div>
+        <div class="term-info">   Tools found: get_weather, calculate_bmi</div>
+        <div class="term-info">   Resources found: health/tips, weather/{city}</div>
+      </div>
+    </div>
+
+    <h3>What You'll See in MCP Inspector</h3>
+
+    <div class="inspector-box">
+      <div class="inspector-header">
+        <div class="title">🔍 MCP INSPECTOR — Tool Test Panel</div>
+      </div>
+      <div class="inspector-body">
+        <div class="insp-row">
+          <span class="insp-label">Server:</span>
+          <span class="insp-value">health-weather-server (v0.1.0) ● CONNECTED</span>
+        </div>
+        <div class="insp-row">
+          <span class="insp-label">Method:</span>
+          <span class="insp-value">tools/call</span>
+        </div>
+        <div class="insp-row">
+          <span class="insp-label">Tool Name:</span>
+          <span class="insp-value">calculate_bmi</span>
+        </div>
+        <div class="insp-row">
+          <span class="insp-label">Arguments:</span>
+          <span class="insp-value">{ "weight_kg": 70, "height_cm": 175 }</span>
+        </div>
+        <div style="border-top: 1px solid #2a2040; margin: 14px 0;"></div>
+        <div class="insp-row">
+          <span class="insp-label" style="color:#4ade80">RESULT:</span>
+          <span class="insp-result">✓ Success (245ms)</span>
+        </div>
+        <div style="background:#0f0c1a; padding: 12px; border-radius:4px; margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#94a3b8; line-height:1.7;">
+          ⚖️  BMI Calculation:<br>
+          &nbsp;&nbsp; Weight&nbsp;&nbsp;&nbsp;&nbsp; : 70 kg<br>
+          &nbsp;&nbsp; Height&nbsp;&nbsp;&nbsp;&nbsp; : 175 cm<br>
+          &nbsp;&nbsp; BMI Score  : 22.9<br>
+          &nbsp;&nbsp; Category   : Normal weight<br>
+          &nbsp;&nbsp; Advice     : You're in a healthy range! ✓
+        </div>
+      </div>
+    </div>
+
+    <h3>Testing Checklist for MCP Inspector</h3>
+
+    <div class="step-flow">
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Check tools/list works</strong>
+          <p>Click "List Tools" — you should see both tools with their full descriptions and schemas displayed. If a tool is missing, check for typos in your <code>list_tools</code> handler.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Call get_weather with valid city</strong>
+          <p>Enter <code>{"city": "Mumbai"}</code> and call it. Verify the response has temperature, condition, and humidity.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Call calculate_bmi with valid args</strong>
+          <p>Enter <code>{"weight_kg": 70, "height_cm": 175}</code>. Verify BMI is 22.9 and category is "Normal weight".</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Test error handling — call with bad args</strong>
+          <p>Send <code>{"weight_kg": "not-a-number", "height_cm": 175}</code>. FastMCP type checking should catch the bad string-for-float and return a clean MCP error, not crash.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Read both resources</strong>
+          <p>Read <code>resource://health/tips</code> (static) and <code>resource://weather/Mumbai</code> (dynamic). Verify content is correct for each.</p>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <strong>Check the JSON-RPC message log</strong>
+          <p>MCP Inspector shows every raw JSON message exchanged. Read through it — you should recognise the <code>initialize</code> handshake, <code>tools/list</code>, and <code>tools/call</code> messages from Part 1.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       09 — COMPLETE SERVER CODE
+  ══════════════════════════════════════ -->
+  <div class="section" id="full-server">
+    <div class="section-label">Section 09</div>
+    <h2>Complete Server Code — Everything Assembled</h2>
+
+    <p>Here is the complete <code>main.py</code> with all features combined using FastMCP — fully commented, ready to run with <code>uv run python main.py</code>. Compare this to what the raw SDK version would look like and notice how much boilerplate is gone.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">Python — main.py (complete FastMCP file)</div>
+      </div>
+      <pre><span class="cmt">"""
+MCP Health &amp; Weather Server — Part 2 Complete Implementation (FastMCP)
+Run with : uv run python main.py
+Test with: npx @modelcontextprotocol/inspector uv run python main.py
+"""</span>
+<span class="kw">from</span> fastmcp <span class="kw">import</span> FastMCP
+
+<span class="cmt"># ════════════════════════════════════════════════════
+# SERVER INSTANCE — one line replaces Server + InitializationOptions
+# ════════════════════════════════════════════════════</span>
+mcp <span class="op">=</span> <span class="fn">FastMCP</span>(<span class="str">"health-weather-server"</span>)
+
+<span class="cmt"># ════════════════════════════════════════════════════
+# STATIC DATA
+# ════════════════════════════════════════════════════</span>
+HEALTH_TIPS <span class="op">=</span> <span class="str">"""# Daily Health Tips
+
+1. 💧 Drink 8 glasses of water daily
+2. 😴 Sleep 7-9 hours per night
+3. 🏃 Exercise at least 30 min/day
+4. 🥦 Eat 5 portions of fruit/veg daily
+5. 🚫 Limit processed foods and sugar
+6. 🧘 Practice mindfulness or meditation
+7. ☀️ Get 15-20 min of sunlight daily
+"""</span>
+
+MOCK_WEATHER <span class="op">=</span> {
+    <span class="str">"mumbai"</span>:    {<span class="str">"temp"</span>: <span class="num">34</span>, <span class="str">"condition"</span>: <span class="str">"Partly Cloudy"</span>, <span class="str">"humidity"</span>: <span class="num">78</span>},
+    <span class="str">"delhi"</span>:     {<span class="str">"temp"</span>: <span class="num">42</span>, <span class="str">"condition"</span>: <span class="str">"Sunny"</span>,         <span class="str">"humidity"</span>: <span class="num">30</span>},
+    <span class="str">"london"</span>:    {<span class="str">"temp"</span>: <span class="num">14</span>, <span class="str">"condition"</span>: <span class="str">"Rainy"</span>,          <span class="str">"humidity"</span>: <span class="num">85</span>},
+    <span class="str">"new york"</span>:  {<span class="str">"temp"</span>: <span class="num">22</span>, <span class="str">"condition"</span>: <span class="str">"Clear"</span>,          <span class="str">"humidity"</span>: <span class="num">55</span>},
+    <span class="str">"tokyo"</span>:     {<span class="str">"temp"</span>: <span class="num">28</span>, <span class="str">"condition"</span>: <span class="str">"Humid"</span>,          <span class="str">"humidity"</span>: <span class="num">72</span>},
+}
+
+<span class="cmt"># ════════════════════════════════════════════════════
+# TOOLS — @mcp.tool() replaces list_tools + call_tool
+# ════════════════════════════════════════════════════</span>
+<span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">get_weather</span>(city: str) <span class="op">-></span> str:
+    <span class="str">"""
+    Get current weather for a city. Returns temperature,
+    weather condition, and humidity. Use when user asks about
+    weather, temperature, or whether to bring an umbrella.
+    """</span>
+    w <span class="op">=</span> MOCK_WEATHER.<span class="fn">get</span>(city.lower(), <span class="kw">None</span>)
+    <span class="kw">if not</span> w:
+        known <span class="op">=</span> <span class="str">", "</span>.<span class="fn">join</span>(c.title() <span class="kw">for</span> c <span class="kw">in</span> MOCK_WEATHER)
+        <span class="kw">return</span> <span class="fn">f</span><span class="str">"❌ City '{city}' not found. Available: {known}"</span>
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"""🌤️  Weather — {city.title()}
+   Temperature : {w['temp']}°C
+   Condition   : {w['condition']}
+   Humidity    : {w['humidity']}%"""</span>
+
+
+<span class="dec">@mcp.tool</span>()
+<span class="kw">def</span> <span class="fn">calculate_bmi</span>(weight_kg: float, height_cm: float) <span class="op">-></span> str:
+    <span class="str">"""
+    Calculate BMI (Body Mass Index) from weight and height.
+    Returns BMI number, WHO category, and basic health advice.
+    Use when user provides weight and height data.
+    """</span>
+    <span class="kw">if</span> weight_kg <span class="op">&lt;=</span> <span class="num">0</span> <span class="kw">or</span> height_cm <span class="op">&lt;=</span> <span class="num">0</span>:
+        <span class="kw">return</span> <span class="str">"❌ Weight and height must be positive numbers."</span>
+    bmi <span class="op">=</span> <span class="fn">round</span>(weight_kg <span class="op">/</span> (height_cm <span class="op">/</span> <span class="num">100</span>) <span class="op">**</span> <span class="num">2</span>, <span class="num">1</span>)
+    <span class="kw">if</span>   bmi <span class="op">&lt;</span> <span class="num">18.5</span>: cat, adv <span class="op">=</span> <span class="str">"Underweight 🔵"</span>, <span class="str">"Consider a nutritionist consult."</span>
+    <span class="kw">elif</span> bmi <span class="op">&lt;</span> <span class="num">25.0</span>: cat, adv <span class="op">=</span> <span class="str">"Normal ✅"</span>,      <span class="str">"You're in a healthy range!"</span>
+    <span class="kw">elif</span> bmi <span class="op">&lt;</span> <span class="num">30.0</span>: cat, adv <span class="op">=</span> <span class="str">"Overweight 🟡"</span>,  <span class="str">"Diet and exercise may help."</span>
+    <span class="kw">else</span>:            cat, adv <span class="op">=</span> <span class="str">"Obese 🔴"</span>,        <span class="str">"Please consult a doctor."</span>
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"""⚖️  BMI Result
+   Weight   : {weight_kg} kg
+   Height   : {height_cm} cm
+   BMI      : {bmi}
+   Category : {cat}
+   Advice   : {adv}"""</span>
+
+
+<span class="cmt"># ════════════════════════════════════════════════════
+# RESOURCES — @mcp.resource() replaces list_resources + read_resource
+# ════════════════════════════════════════════════════</span>
+<span class="dec">@mcp.resource</span>(<span class="str">"resource://health/tips"</span>)
+<span class="kw">def</span> <span class="fn">health_tips</span>() <span class="op">-></span> str:
+    <span class="str">"""Daily health and wellness tips."""</span>
+    <span class="kw">return</span> HEALTH_TIPS
+
+
+<span class="dec">@mcp.resource</span>(<span class="str">"resource://weather/{city}"</span>)    <span class="cmt"># {city} is injected as arg</span>
+<span class="kw">def</span> <span class="fn">city_weather_resource</span>(city: str) <span class="op">-></span> str:
+    <span class="str">"""Live weather for a city via URI template."""</span>
+    w <span class="op">=</span> MOCK_WEATHER.<span class="fn">get</span>(city.lower(), {<span class="str">"temp"</span>:<span class="num">25</span>, <span class="str">"condition"</span>:<span class="str">"Unknown"</span>, <span class="str">"humidity"</span>:<span class="num">60</span>})
+    <span class="kw">return</span> <span class="fn">f</span><span class="str">"Weather for {city.title()}: {w['temp']}°C, {w['condition']}, {w['humidity']}% humidity"</span>
+
+
+<span class="cmt"># ════════════════════════════════════════════════════
+# ENTRY POINT — mcp.run() replaces async def main() + asyncio.run()
+# ════════════════════════════════════════════════════</span>
+<span class="kw">if</span> __name__ <span class="op">==</span> <span class="str">"__main__"</span>:
+    mcp.<span class="fn">run</span>()</pre></pre>
+    </div>
+
+    <h3>Connecting to Claude Desktop (Bonus)</h3>
+    <p>Once Inspector confirms everything works, add the server to Claude Desktop. Edit <code>%APPDATA%\Claude\claude_desktop_config.json</code> (Windows) or <code>~/Library/Application Support/Claude/claude_desktop_config.json</code> (macOS). With uv you just point to the project folder — no hardcoded venv paths:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <div class="code-lang">JSON — claude_desktop_config.json</div>
+      </div>
+      <pre>{
+  <span class="key">"mcpServers"</span>: {
+    <span class="key">"health-weather"</span>: {
+      <span class="key">"command"</span>: <span class="str">"uv"</span>,
+      <span class="key">"args"</span>: [<span class="str">"run"</span>, <span class="str">"python"</span>, <span class="str">"main.py"</span>],
+      <span class="key">"cwd"</span>: <span class="str">"C:\\Users\\you\\mcp-health-server"</span>   <span class="cmt">// full path to project folder</span>
+    }
+  }
+}</pre>
+    </div>
+
+    <p>Restart Claude Desktop. You should now see a hammer icon 🔨 in the chat interface — that means your MCP tools are loaded. Ask Claude: <em>"What is the weather in Mumbai?"</em> or <em>"My BMI — I weigh 70kg, I'm 175cm tall."</em> If it fails to start, run <code>uv run python main.py</code> manually in your project folder to see the error.</p>
+
+  </div>
+
+
+  <!-- ══════════════════════════════════════
+       10 — SUMMARY
+  ══════════════════════════════════════ -->
+  <div class="section" id="summary">
+    <div class="section-label">Section 10</div>
+    <h2>Summary &amp; Checklist</h2>
+
+    <p>You now have a fully working MCP server. Here's what you built and what you now understand:</p>
+
+    <div class="callout callout-green">
+      <div class="callout-title">✅ Part 2 Completion Checklist</div>
+      <p>
+        ☐ I can set up a FastMCP project with <code>uv init</code>, <code>uv python pin 3.12</code>, and <code>uv add fastmcp</code>.<br>
+        ☐ I know that <code>FastMCP("name")</code> replaces Server + InitializationOptions.<br>
+        ☐ I can create a tool with <code>@mcp.tool()</code> and write a clear docstring (the LLM reads it).<br>
+        ☐ I know that FastMCP generates input schemas from Python type annotations automatically.<br>
+        ☐ I understand that tool functions return plain strings — FastMCP wraps them for the protocol.<br>
+        ☐ I can write JSON Schema concepts for validation and know Pydantic models work natively too.<br>
+        ☐ I can implement static resources with <code>@mcp.resource("uri")</code> and dynamic ones with <code>@mcp.resource("uri/{param}")</code>.<br>
+        ☐ I know the difference between raising an exception (protocol error) and returning an error string (tool failure).<br>
+        ☐ I can test my server with <code>npx @modelcontextprotocol/inspector uv run python main.py</code>.<br>
+        ☐ I can connect my server to Claude Desktop using <code>uv run</code> in claude_desktop_config.json (no venv paths needed).
+      </p>
+    </div>
+
+    <h3>Key Patterns to Memorize</h3>
+
+    <table class="compare-table">
+      <tr><th>Pattern</th><th>FastMCP code</th></tr>
+      <tr><td>Install</td><td><code>uv add fastmcp pydantic httpx</code></td></tr>
+      <tr><td>Create server</td><td><code>mcp = FastMCP("my-server-name")</code></td></tr>
+      <tr><td>Register a tool</td><td><code>@mcp.tool()</code> on any function</td></tr>
+      <tr><td>Tool description</td><td>Function docstring (LLM reads this)</td></tr>
+      <tr><td>Tool input schema</td><td>Python type annotations — auto-generated</td></tr>
+      <tr><td>Return tool result</td><td>Plain <code>return "string"</code> — FastMCP wraps it</td></tr>
+      <tr><td>Static resource</td><td><code>@mcp.resource("resource://my/path")</code></td></tr>
+      <tr><td>Dynamic resource</td><td><code>@mcp.resource("resource://path/{param}")</code></td></tr>
+      <tr><td>Raise error</td><td><code>raise ValueError("...")</code> — FastMCP converts it</td></tr>
+      <tr><td>Launch server</td><td><code>mcp.run()</code> — no asyncio boilerplate</td></tr>
+      <tr><td>Run from terminal</td><td><code>uv run python main.py</code></td></tr>
+      <tr><td>Test with inspector</td><td><code>npx @modelcontextprotocol/inspector uv run python main.py</code></td></tr>
+    </table>
+
+    <div class="next-part">
+      <div>
+        <div class="label">COMING NEXT — PART 3</div>
+        <div class="title">Real APIs, Database Servers &amp; Production Deploy</div>
+      </div>
+      <button class="btn">Part 3 →</button>
+    </div>
+
+  </div><!-- /summary -->
+
+</main>
+</div><!-- /layout -->
+
+<script>
+  // Reading progress bar
+  window.addEventListener('scroll', () => {
+    const doc = document.documentElement;
+    const pct = (doc.scrollTop / (doc.scrollHeight - doc.clientHeight)) * 100;
+    document.getElementById('progress-bar').style.width = pct + '%';
+  });
+
+  // Sidebar active highlight
+  const sections = document.querySelectorAll('.section');
+  const navItems = document.querySelectorAll('.nav-item');
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navItems.forEach(n => n.classList.remove('active'));
+        const m = document.querySelector(`.nav-item[href="#${e.target.id}"]`);
+        if (m) m.classList.add('active');
+      }
+    });
+  }, { threshold: 0.25 });
+  sections.forEach(s => io.observe(s));
+</script>
+</body>
+</html>
